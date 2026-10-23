@@ -61,7 +61,6 @@ fun FoxyNavGraph(
                 onDisconnect = onDisconnect,
                 onOpenServers = { navController.navigate(FoxyRoutes.SERVERS) },
                 onOpenSettings = { navController.navigate(FoxyRoutes.SETTINGS) },
-                onOpenAccounts = { navController.navigate(FoxyRoutes.ACCOUNT) },
             )
         }
         composable(FoxyRoutes.SERVERS) {
@@ -88,7 +87,6 @@ fun FoxyNavGraph(
         composable(FoxyRoutes.ACCOUNT) {
             AccountScreen(
                 authRepository = app.authRepository,
-                tokenStore = app.tokenStore,
                 onBack = { navController.popBackStack() },
             )
         }
