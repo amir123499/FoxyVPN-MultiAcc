@@ -107,7 +107,7 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
                 DesignOptionCard(
                     label = design.label,
                     selected = appearance.appDesign == design,
-                    onClick = { appearance.setAppDesign(design) },
+                    onClick = { appearance.updateAppDesign(design) },
                     modifier = Modifier.weight(1f),
                 ) { DesignPreview(design = design) }
             }
@@ -124,13 +124,13 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
                 ThemeMode.AMOLED -> ThemeMode.SYSTEM
                 else -> appearance.themeMode
             },
-            onSelect = { appearance.setThemeMode(it) },
+            onSelect = { appearance.updateThemeMode(it) },
         )
         SettingsSwitchRow(
             title = "Dynamic color",
             subtitle = "Follow your wallpaper colors (Android 12+)",
             checked = appearance.dynamicColor,
-            onCheckedChange = { appearance.setDynamicColor(it) },
+            onCheckedChange = { appearance.updateDynamicColor(it) },
         )
         if (!appearance.dynamicColor) {
             Text(
@@ -152,7 +152,7 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
                         color = if (selected) cs.primary else cs.surfaceContainerHighest,
                         contentColor = if (selected) cs.onPrimary else cs.onSurfaceVariant,
                         modifier = Modifier.selectable(selected = selected) {
-                            appearance.setColorStyle(style)
+                            appearance.updateColorStyle(style)
                         },
                     ) {
                         Text(
@@ -189,7 +189,7 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
                                 color = if (selected) cs.primary else cs.outlineVariant,
                                 shape = CircleShape,
                             )
-                            .clickable { appearance.setAccentColorIndex(index) },
+                            .clickable { appearance.updateAccentColorIndex(index) },
                         contentAlignment = Alignment.Center,
                     ) {
                         if (selected) {
@@ -207,14 +207,14 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
                 options = ColorContrast.entries,
                 labels = ColorContrast.entries.map { it.label },
                 selected = appearance.colorContrast,
-                onSelect = { appearance.setColorContrast(it) },
+                onSelect = { appearance.updateColorContrast(it) },
             )
         }
         SettingsSwitchRow(
             title = "AMOLED black",
             subtitle = "Pure black background to save battery on OLED screens",
             checked = appearance.themeMode == ThemeMode.AMOLED,
-            onCheckedChange = { appearance.setAmoled(it) },
+            onCheckedChange = { appearance.updateAmoled(it) },
         )
 
         HorizontalDividerThin()
@@ -274,7 +274,7 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
             title = "Reduce motion",
             subtitle = "Minimize animations across the app",
             checked = appearance.reduceMotion,
-            onCheckedChange = { appearance.setReduceMotion(it) },
+            onCheckedChange = { appearance.updateReduceMotion(it) },
         )
 
         HorizontalDividerThin()
@@ -304,7 +304,7 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
                     color = if (chosen) cs.primary else cs.surfaceContainerHighest,
                     contentColor = if (chosen) cs.onPrimary else cs.onSurfaceVariant,
                     modifier = Modifier.selectable(selected = chosen) {
-                        appearance.setScreenTransition(style)
+                        appearance.updateScreenTransition(style)
                     },
                 ) {
                     Text(
@@ -354,7 +354,7 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
                                 color = if (isSelected) cs.primary else cs.outlineVariant,
                                 shape = RoundedCornerShape(14.dp),
                             )
-                            .clickable { appearance.setConnectButtonStyle(style) },
+                            .clickable { appearance.updateConnectButtonStyle(style) },
                         contentAlignment = Alignment.Center,
                     ) { ConnectStyleGlyph(style) }
                     Spacer(Modifier.height(6.dp))
@@ -379,7 +379,7 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
                     current = slotCurrentColor(appearance, slot),
                     onDismiss = { showPicker = false },
                     onConfirm = { argb ->
-                        appearance.setCustomColor(slot, argb)
+                        appearance.updateCustomColor(slot, argb)
                         showPicker = false
                     },
                 )
@@ -414,19 +414,19 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
             title = "Show ping on locations",
             subtitle = "Measure latency next to each location",
             checked = appearance.showServerPing,
-            onCheckedChange = { appearance.setShowServerPing(it) },
+            onCheckedChange = { appearance.updateShowServerPing(it) },
         )
         SettingsSwitchRow(
             title = "Show server counts",
             subtitle = "Show how many servers each location has",
             checked = appearance.showServerUsage,
-            onCheckedChange = { appearance.setShowServerUsage(it) },
+            onCheckedChange = { appearance.updateShowServerUsage(it) },
         )
         SettingsSwitchRow(
             title = "Monospace addresses",
             subtitle = "Use a fixed-width font for server addresses",
             checked = appearance.monospaceAddress,
-            onCheckedChange = { appearance.setMonospaceAddress(it) },
+            onCheckedChange = { appearance.updateMonospaceAddress(it) },
         )
         if (appearance.hasPersonalization()) {
             TextButton(
@@ -445,19 +445,19 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
             title = "Confirm before removing",
             subtitle = "Ask before deleting an account",
             checked = appearance.confirmRemove,
-            onCheckedChange = { appearance.setConfirmRemove(it) },
+            onCheckedChange = { appearance.updateConfirmRemove(it) },
         )
         SettingsSwitchRow(
             title = "Back home after selecting",
             subtitle = "Return to the home screen after picking a location",
             checked = appearance.homeAfterSelect,
-            onCheckedChange = { appearance.setHomeAfterSelect(it) },
+            onCheckedChange = { appearance.updateHomeAfterSelect(it) },
         )
         SettingsSwitchRow(
             title = "Two-column locations",
             subtitle = "Show the location list in two columns",
             checked = appearance.doubleColumnDisplay,
-            onCheckedChange = { appearance.setDoubleColumnDisplay(it) },
+            onCheckedChange = { appearance.updateDoubleColumnDisplay(it) },
         )
     }
 
@@ -469,7 +469,7 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
             selected = appearance.appLanguage,
             onDismiss = { showDialog = null },
             onSelect = {
-                appearance.setAppLanguage(it)
+                appearance.updateAppLanguage(it)
                 showDialog = null
             },
         )
@@ -479,7 +479,7 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
             selected = appearance.uiFontScale,
             onDismiss = { showDialog = null },
             onSelect = {
-                appearance.setUiFontScale(it)
+                appearance.updateUiFontScale(it)
                 showDialog = null
             },
         )
@@ -489,7 +489,7 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
             selected = appearance.navBarStyle,
             onDismiss = { showDialog = null },
             onSelect = {
-                appearance.setNavBarStyle(it)
+                appearance.updateNavBarStyle(it)
                 showDialog = null
             },
         )
@@ -499,7 +499,7 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
             selected = appearance.cardCornerStyle,
             onDismiss = { showDialog = null },
             onSelect = {
-                appearance.setCardCornerStyle(it)
+                appearance.updateCardCornerStyle(it)
                 showDialog = null
             },
         )
@@ -509,7 +509,7 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
             selected = appearance.listDensity,
             onDismiss = { showDialog = null },
             onSelect = {
-                appearance.setListDensity(it)
+                appearance.updateListDensity(it)
                 showDialog = null
             },
         )
