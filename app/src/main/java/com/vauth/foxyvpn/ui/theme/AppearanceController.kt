@@ -60,86 +60,86 @@ class AppearanceController(private val settingsStore: SettingsStore) {
     var doubleColumnDisplay: Boolean by mutableStateOf(settingsStore.doubleColumnDisplay)
         private set
 
-    fun setThemeMode(next: ThemeMode) {
+    fun updateThemeMode(next: ThemeMode) {
         settingsStore.themeMode = next
         themeMode = next
     }
 
     /** AMOLED switch: maps onto ThemeMode.AMOLED like ZedSecure's amoledBlack. */
-    fun setAmoled(on: Boolean) {
-        setThemeMode(if (on) ThemeMode.AMOLED else ThemeMode.SYSTEM)
+    fun updateAmoled(on: Boolean) {
+        updateThemeMode(if (on) ThemeMode.AMOLED else ThemeMode.SYSTEM)
     }
 
-    fun setDynamicColor(on: Boolean) {
+    fun updateDynamicColor(on: Boolean) {
         settingsStore.dynamicColor = on
         dynamicColor = on
     }
 
-    fun setColorStyle(next: ColorStyle) {
+    fun updateColorStyle(next: ColorStyle) {
         settingsStore.colorStyle = next
         colorStyle = next
         clearProfileSelection()
     }
 
-    fun setAccentColorIndex(next: Int) {
+    fun updateAccentColorIndex(next: Int) {
         settingsStore.accentColorIndex = next
         accentColorIndex = next
         clearProfileSelection()
     }
 
-    fun setColorContrast(next: ColorContrast) {
+    fun updateColorContrast(next: ColorContrast) {
         settingsStore.colorContrast = next
         colorContrast = next
     }
 
-    fun setReduceMotion(on: Boolean) {
+    fun updateReduceMotion(on: Boolean) {
         settingsStore.reduceMotion = on
         reduceMotion = on
     }
 
-    fun setUiFontScale(next: UiFontScale) {
+    fun updateUiFontScale(next: UiFontScale) {
         settingsStore.uiFontScale = next
         uiFontScale = next
     }
 
-    fun setAppLanguage(next: AppLanguage) {
+    fun updateAppLanguage(next: AppLanguage) {
         settingsStore.appLanguage = next
         appLanguage = next
     }
 
-    fun setScreenTransition(next: ScreenTransition) {
+    fun updateScreenTransition(next: ScreenTransition) {
         settingsStore.screenTransition = next
         screenTransition = next
     }
 
-    fun setNavBarStyle(next: NavBarStyle) {
+    fun updateNavBarStyle(next: NavBarStyle) {
         settingsStore.navBarStyle = next
         navBarStyle = next
     }
 
-    fun setConnectButtonStyle(next: ConnectButtonStyle) {
+    fun updateConnectButtonStyle(next: ConnectButtonStyle) {
         settingsStore.connectButtonStyle = next
         connectButtonStyle = next
     }
 
-    fun setCardCornerStyle(next: CardCornerStyle) {
+    fun updateCardCornerStyle(next: CardCornerStyle) {
         settingsStore.cardCornerStyle = next
         cardCornerStyle = next
         refreshPersonalization()
     }
 
-    fun setListDensity(next: ListDensity) {
+    fun updateListDensity(next: ListDensity) {
         settingsStore.listDensity = next
         listDensity = next
         refreshPersonalization()
     }
 
-    fun setAppDesign(next: SettingsStore.AppDesign) {
+    fun updateAppDesign(next: SettingsStore.AppDesign) {
         settingsStore.appDesign = next
         appDesign = next
     }
 
-    fun setCustomColor(which: PersonalizeSlot, argb: Long?) {
+    fun updateCustomColor(which: PersonalizeSlot, argb: Long?) {
         val value = argb ?: SettingsStore.UNSET_COLOR
         when (which) {
             PersonalizeSlot.Connect -> settingsStore.customConnectColor = value
@@ -153,35 +153,35 @@ class AppearanceController(private val settingsStore: SettingsStore) {
         clearProfileSelection()
     }
 
-    fun setShowServerPing(on: Boolean) {
+    fun updateShowServerPing(on: Boolean) {
         settingsStore.showServerPing = on
         showServerPing = on
         refreshPersonalization()
     }
 
-    fun setShowServerUsage(on: Boolean) {
+    fun updateShowServerUsage(on: Boolean) {
         settingsStore.showServerUsage = on
         showServerUsage = on
         refreshPersonalization()
     }
 
-    fun setMonospaceAddress(on: Boolean) {
+    fun updateMonospaceAddress(on: Boolean) {
         settingsStore.monospaceAddress = on
         monospaceAddress = on
         refreshPersonalization()
     }
 
-    fun setConfirmRemove(on: Boolean) {
+    fun updateConfirmRemove(on: Boolean) {
         settingsStore.confirmRemove = on
         confirmRemove = on
     }
 
-    fun setHomeAfterSelect(on: Boolean) {
+    fun updateHomeAfterSelect(on: Boolean) {
         settingsStore.homeAfterSelect = on
         homeAfterSelect = on
     }
 
-    fun setDoubleColumnDisplay(on: Boolean) {
+    fun updateDoubleColumnDisplay(on: Boolean) {
         settingsStore.doubleColumnDisplay = on
         doubleColumnDisplay = on
     }
