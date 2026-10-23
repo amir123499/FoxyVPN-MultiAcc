@@ -31,16 +31,15 @@ import com.vauth.foxyvpn.data.SettingsStore
 import com.vauth.foxyvpn.data.TokenInvalidError
 import com.vauth.foxyvpn.data.TokenStore
 import com.vauth.foxyvpn.data.formatBytesPerSecond
-import com.vauth.foxyvpn.data.model.AccountLiveStats
 import com.vauth.foxyvpn.data.model.ConnectionState
 import com.vauth.foxyvpn.data.model.ProxyCandidate
-import com.vauth.foxyvpn.data.model.VpnAccount
+import com.vauth.foxyvpn.data.model.RuntimeAuth
 import com.vauth.foxyvpn.vpn.socks.LocalHttpProxyServer
 import com.vauth.foxyvpn.vpn.socks.LocalSocks5Server
 import com.vauth.foxyvpn.vpn.tun.HevSocks5Tunnel
 import com.vauth.foxyvpn.vpn.tun.HevSocks5TunnelConfig
 import com.vauth.foxyvpn.vpn.upstream.EdgeAddressResolver
-import com.vauth.foxyvpn.vpn.upstream.MultiUpstreamSessionPool
+import com.vauth.foxyvpn.vpn.upstream.H2UpstreamSession
 import com.vauth.foxyvpn.vpn.upstream.UpstreamProxyConfig
 import com.vauth.foxyvpn.vpn.upstream.UpstreamSession
 import com.vauth.foxyvpn.widget.QuickConnectWidgetProvider
@@ -135,8 +134,6 @@ class FoxyVpnService : VpnService() {
     private var speedJob: Job? = null
 
     private var tokenRenewalJob: Job? = null
-
-    private var poolStatsJob: Job? = null
 
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
@@ -406,85 +403,71 @@ class FoxyVpnService : VpnService() {
     private fun isFatalUpstreamError(error: Throwable): Boolean =
         error is TokenInvalidError || error is QuotaExceededError
 
-    /**
-     * Mints a Guardian proxy pass for one account (multi-account patch).
-     * The account's FxA access token is renewed first when expired; the
-     * renewed auth is persisted back to the account list.
-     */
-    private suspend fun mintProxyPassFor(tokenStore: TokenStore, account: VpnAccount): ProxyPass {
-        var auth = account.auth
-        val nowSeconds = System.currentTimeMillis() / 1000
-        if (auth.expiresAtEpochSeconds - nowSeconds <= 60L) {
-            val renewed = runCatching {
-                FxaAuthRepository(tokenStore).ensureFreshAccessTokenForAccount(account, force = true)
-            }.getOrNull()
-            if (renewed != null) {
-                auth = renewed
-                tokenStore.updateAccount(account.copy(auth = renewed, lastError = null))
-                AppLogger.i(TAG, "the access token for ${account.email} had expired and was renewed")
-            } else {
-                AppLogger.w(
-                    TAG,
-                    "the access token for ${account.email} is past its expiry and could not be renewed " +
-                        "automatically; trying with the stored one",
-                )
-            }
-        }
-        val guardian = GuardianClient()
-
-        return try {
-            guardian.fetchProxyPass(GUARDIAN_ENDPOINT_DEFAULT, auth.accessToken)
-        } catch (invalid: TokenInvalidError) {
-            AppLogger.w(
-                TAG,
-                "proxy pass rejected for ${account.email}, activating Guardian entitlement and retrying",
-                invalid,
-            )
-            guardian.activateGuardian(GUARDIAN_ENDPOINT_DEFAULT, auth.accessToken)
-            guardian.fetchProxyPass(GUARDIAN_ENDPOINT_DEFAULT, auth.accessToken)
-        }
-    }
-
-    /**
-     * Multi-account proxy-pass renewal: on each cycle every enabled account
-     * gets a fresh pass minted and pushed into its pool entry in place, so the
-     * tunnel is never rebuilt. The cycle is scheduled at half the remaining
-     * life of the shortest-lived pass.
-     */
-    private fun startMultiAccountProxyPassRenewal(myGeneration: Int) {
+    private fun startProxyPassRenewal(
+        myGeneration: Int,
+        initialExpiry: Long?,
+        mintProxyPass: suspend () -> ProxyPass,
+    ) {
         tokenRenewalJob?.cancel()
         tokenRenewalJob = scope.launch {
-            AppLogger.i(TAG, "proxy pass renewal armed for the account pool")
+            var expiry = initialExpiry
+            AppLogger.i(
+                TAG,
+                "proxy pass renewal scheduled in ${proxyPassRenewalDelayMs(expiry) / 1_000}s " +
+                    (if (expiry == null) "(pass lifetime unknown; using a fixed interval)" else "(at half of its remaining life)"),
+            )
             while (isActive) {
-                val pool = upstreamSession as? MultiUpstreamSessionPool
-                val delayMs = pool?.minPassExpiry()?.let { proxyPassRenewalDelayMs(it) }
-                    ?: PROXY_PASS_RENEWAL_FALLBACK_MS
-                delay(delayMs)
+                delay(proxyPassRenewalDelayMs(expiry))
                 if (myGeneration != connectionGeneration) return@launch
 
-                val live = upstreamSession as? MultiUpstreamSessionPool
-                if (live == null || !live.isConnected) {
-                    AppLogger.d(
-                        TAG,
-                        "skipping proxy pass renewal: no live pool (the watchdog's redial builds its own)",
-                    )
+                val session = upstreamSession
+                if (session == null || !session.isConnected) {
+                    AppLogger.d(TAG, "skipping proxy pass renewal: no live session (the watchdog's redial mints its own)")
                     continue
                 }
 
-                val store = TokenStore(applicationContext)
-                var renewed = 0
-                for (account in store.getEnabledAccounts()) {
-                    if (myGeneration != connectionGeneration) return@launch
-                    val pass = runCatching { mintProxyPassFor(store, account) }.getOrNull()
-                    if (pass == null) {
-                        AppLogger.w(TAG, "proxy pass renewal failed for ${account.email}; retrying next cycle")
-                        continue
+                val attempt = runCatching { mintProxyPass() }
+                val pass = attempt.getOrNull()
+                if (pass == null) {
+                    val error = attempt.exceptionOrNull()
+                    if (error is CancellationException) throw error
+                    if (error != null && isFatalUpstreamError(error)) {
+                        AppLogger.e(
+                            TAG,
+                            "proxy pass renewal failed for a reason retrying cannot fix; leaving the session to the watchdog",
+                            error,
+                        )
+                        return@launch
                     }
-                    live.updateAccountToken(account.id, pass.token)
-                    live.setPassExpiry(account.id, pass.expiresAtEpochSeconds)
-                    renewed++
+                    AppLogger.w(TAG, "proxy pass renewal failed; retrying shortly: ${error?.message}")
+
+                    expiry = null
+                    delay(PROXY_PASS_RENEWAL_RETRY_MS)
+                    continue
                 }
-                AppLogger.i(TAG, "renewed proxy passes for $renewed account(s) in place; the tunnel was not rebuilt")
+
+                if (myGeneration != connectionGeneration) return@launch
+
+                val live = upstreamSession
+                if (live == null || !live.isConnected) {
+
+                    AppLogger.d(
+                        TAG,
+                        "minted a fresh proxy pass but the session went down meanwhile; the watchdog's redial " +
+                            "will mint its own",
+                    )
+                    expiry = pass.expiresAtEpochSeconds
+                    continue
+                }
+
+                val lifetimeNote = pass.expiresAtEpochSeconds?.let { expiresAt ->
+                    val seconds = (expiresAt * 1_000L - System.currentTimeMillis()) / 1_000L
+                    " (valid for ${seconds}s)"
+                } ?: " (lifetime not stated)"
+                live.updateBearerToken(pass.token)
+                AppLogger.i(TAG, "proxy pass renewed in place$lifetimeNote; the tunnel was not rebuilt")
+
+                expiry = pass.expiresAtEpochSeconds
             }
         }
     }
@@ -501,13 +484,7 @@ class FoxyVpnService : VpnService() {
         runCatching {
             AppLogger.i(TAG, "connect: starting")
             val tokenStore = TokenStore(applicationContext)
-            // Multi-account patch: connect with every enabled account; the
-            // legacy single session migrates into the list on first run.
-            val accounts = tokenStore.getEnabledAccounts().toMutableList()
-            if (accounts.isEmpty()) {
-                tokenStore.migrateLegacySessionIfPresent()?.let { accounts.add(it) }
-            }
-            if (accounts.isEmpty()) error("Not signed in")
+            if (tokenStore.loadAuth() == null) error("Not signed in")
             val proxyStateStore = ProxyStateStore(applicationContext)
             val settingsStore = SettingsStore(applicationContext)
 
@@ -666,72 +643,65 @@ class FoxyVpnService : VpnService() {
             }
             ensureGenerationCurrent(myGeneration)
 
-            // Multi-account patch: one Guardian proxy pass + one H2 session per
-            // enabled account, aggregated in a MultiUpstreamSessionPool. A
-            // single account failing never aborts the whole connect.
-            suspend fun dialUpstream(): MultiUpstreamSessionPool {
-                val pool = MultiUpstreamSessionPool()
-                var fatalFailure: Throwable? = null
-                for (account in accounts) {
-                    ensureGenerationCurrent(myGeneration)
-                    val pass = try {
-                        mintProxyPassFor(tokenStore, account)
-                    } catch (failure: Throwable) {
-                        if (failure is CancellationException) throw failure
-                        if (isFatalUpstreamError(failure)) {
-                            AppLogger.e(TAG, "fatal upstream error for ${account.email}; skipping the account", failure)
-                            fatalFailure = fatalFailure ?: failure
-                        } else {
-                            AppLogger.w(TAG, "dial for ${account.email} failed: ${failure.message}")
-                        }
-                        tokenStore.updateAccount(account.copy(lastError = failure.message))
-                        continue
-                    }
-                    val lifetimeNote = pass.expiresAtEpochSeconds?.let { expiresAt ->
-                        val seconds = (expiresAt * 1_000L - System.currentTimeMillis()) / 1_000L
-                        " (valid for ${seconds}s)"
-                    } ?: " (lifetime not stated)"
-                    AppLogger.i(TAG, "connect: acquired Guardian proxy pass for ${account.email}$lifetimeNote")
+            suspend fun mintProxyPass(): ProxyPass {
+                var auth = tokenStore.loadAuth() ?: throw TokenInvalidError("Not signed in")
 
-                    val target = activeCandidate()
-                    val edgeAddress = customEdgeAddress
-                        ?: resolveEdgeAddress(target.host, upstreamProxyConfig, dohEndpointAddresses)
+                if (!tokenStore.hasValidAccessToken()) {
+                    val renewed = renewAccessToken(tokenStore)
+                    if (renewed != null) {
+                        auth = renewed
+                        AppLogger.i(TAG, "the account's access token had expired and was renewed")
+                    } else {
 
-                    val session = com.vauth.foxyvpn.vpn.upstream.H2UpstreamSession(
-                        target.host,
-                        target.port,
-                        pass.token,
-                        upstreamProxyConfig,
-                        edgeAddress,
-                    )
-                    try {
-                        session.connect()
-                    } catch (failure: Throwable) {
-                        runCatching { session.close() }
-                        if (isFatalUpstreamError(failure)) {
-                            AppLogger.e(TAG, "fatal tunnel error for ${account.email}; skipping the account", failure)
-                            fatalFailure = fatalFailure ?: failure
-                        } else {
-                            AppLogger.w(TAG, "upstream tunnel for ${account.email} failed: ${failure.message}")
-                        }
-                        tokenStore.updateAccount(account.copy(lastError = failure.message))
-                        continue
+                        AppLogger.w(
+                            TAG,
+                            "the account's access token is past its expiry and could not be renewed automatically; " +
+                                "you may need to sign in again",
+                        )
                     }
-                    pool.addAccountSession(account.id, account.email, session)
-                    pool.setPassExpiry(account.id, pass.expiresAtEpochSeconds)
-                    tokenStore.updateAccount(account.copy(lastError = null))
-                    AppLogger.i(
-                        TAG,
-                        "connect: upstream HTTP/2 tunnel established for ${account.email} to ${target.authority}",
-                    )
                 }
-                if (pool.accountCount == 0) {
-                    val fatal = fatalFailure
-                    if (fatal != null) throw fatal
-                    error("Could not reach a VPN server for any of the ${accounts.size} account(s).")
+                val guardian = GuardianClient()
+
+                return try {
+                    guardian.fetchProxyPass(GUARDIAN_ENDPOINT_DEFAULT, auth.accessToken)
+                } catch (invalid: TokenInvalidError) {
+                    AppLogger.w(TAG, "proxy pass rejected, activating Guardian entitlement and retrying", invalid)
+                    guardian.activateGuardian(GUARDIAN_ENDPOINT_DEFAULT, auth.accessToken)
+                    guardian.fetchProxyPass(GUARDIAN_ENDPOINT_DEFAULT, auth.accessToken)
                 }
-                AppLogger.i(TAG, "connect: ${pool.accountCount} upstream account session(s) established")
-                return pool
+            }
+
+            var currentPassExpiry: Long? = null
+
+            suspend fun dialUpstream(): Pair<com.vauth.foxyvpn.vpn.upstream.H2UpstreamSession, Long?> {
+                val target = activeCandidate()
+                val pass = mintProxyPass()
+                currentPassExpiry = pass.expiresAtEpochSeconds
+                val lifetimeNote = pass.expiresAtEpochSeconds?.let { expiresAt ->
+                    val seconds = (expiresAt * 1_000L - System.currentTimeMillis()) / 1_000L
+                    " (valid for ${seconds}s)"
+                } ?: " (lifetime not stated)"
+                AppLogger.i(TAG, "connect: acquired Guardian proxy pass$lifetimeNote")
+
+                val edgeAddress = customEdgeAddress
+                    ?: resolveEdgeAddress(target.host, upstreamProxyConfig, dohEndpointAddresses)
+
+                val session = com.vauth.foxyvpn.vpn.upstream.H2UpstreamSession(
+                    target.host,
+                    target.port,
+                    pass.token,
+                    upstreamProxyConfig,
+                    edgeAddress,
+                )
+                try {
+                    session.connect()
+                } catch (failure: Throwable) {
+
+                    runCatching { session.close() }
+                    throw failure
+                }
+                AppLogger.i(TAG, "connect: upstream HTTP/2 tunnel established to ${target.authority}")
+                return session to pass.expiresAtEpochSeconds
             }
 
             var dialAttempt = 0
@@ -757,7 +727,7 @@ class FoxyVpnService : VpnService() {
                     null
                 }
 
-                val session = dialResult
+                val session = dialResult?.first
 
                 if (session != null) {
                     if (myGeneration != connectionGeneration) {
@@ -820,11 +790,7 @@ class FoxyVpnService : VpnService() {
             updateNotification(connectedText)
             AppLogger.i(TAG, "connect: CONNECTED via ${establishedCandidate.authority}")
 
-            startMultiAccountProxyPassRenewal(myGeneration)
-
-            // Multi-account patch: feed the pool's per-account stats into the
-            // companion flows the UI observes.
-            attachPoolStats()
+            startProxyPassRenewal(myGeneration, currentPassExpiry) { mintProxyPass() }
 
             if (settingsStore.exitCheckEnabled) {
                 scope.launch {
@@ -910,7 +876,7 @@ class FoxyVpnService : VpnService() {
                         AppLogger.w(TAG, "upstream reconnect attempt $consecutiveFailures failed: ${error.message}")
                         null
                     }
-                    val fresh = dialResult
+                    val fresh = dialResult?.first
 
                     if (fresh == null) {
 
@@ -945,8 +911,7 @@ class FoxyVpnService : VpnService() {
                     updateNotification(statusLabel)
                     AppLogger.i(TAG, "upstream tunnel reconnected via ${activeCandidate().authority}")
 
-                    startMultiAccountProxyPassRenewal(myGeneration)
-                    attachPoolStats()
+                    startProxyPassRenewal(myGeneration, currentPassExpiry) { mintProxyPass() }
                 }
             }
         }.onFailure { failure ->
@@ -969,23 +934,6 @@ class FoxyVpnService : VpnService() {
             stopSelf()
         }
         connectJob = null
-    }
-
-    /**
-     * Multi-account patch: attaches the current pool's stats tracker and
-     * mirrors its per-account stats into the companion flows. Re-attached
-     * after every watchdog redial, which swaps in a fresh pool.
-     */
-    private fun attachPoolStats() {
-        poolStatsJob?.cancel()
-        val pool = upstreamSession as? MultiUpstreamSessionPool ?: return
-        poolStatsJob = scope.launch {
-            pool.startStatsTracker(this)
-            pool.liveStats.collect { stats ->
-                _multiAccountStats.value = stats
-                _connectedAccountCount.value = stats.count { it.isConnected && !it.isExhausted }
-            }
-        }
     }
 
     private suspend fun resolveConnectCandidate(proxyStateStore: ProxyStateStore): ProxyCandidate {
@@ -1040,6 +988,17 @@ class FoxyVpnService : VpnService() {
             return null
         }
         return EdgeAddressResolver.resolve(host, dohEndpointAddresses)
+    }
+
+    private suspend fun renewAccessToken(tokenStore: TokenStore): RuntimeAuth? {
+        val attempt = runCatching { FxaAuthRepository(tokenStore).refreshAccessToken() }
+        val failure = attempt.exceptionOrNull()
+        if (failure is CancellationException) throw failure
+        if (failure != null) {
+            AppLogger.w(TAG, "renewing the account's access token failed", failure)
+            return null
+        }
+        return attempt.getOrNull()
     }
 
     private fun friendlyErrorMessage(error: Throwable): String = when (error) {
@@ -1131,9 +1090,6 @@ class FoxyVpnService : VpnService() {
 
         tokenRenewalJob?.cancel()
         tokenRenewalJob = null
-
-        poolStatsJob?.cancel()
-        poolStatsJob = null
         val detached = SessionResources(tunFd, socksServer, httpProxyServer, upstreamSession)
         tunFd = null
         tunnelInterfaceActive = false
@@ -1250,14 +1206,6 @@ class FoxyVpnService : VpnService() {
 
         private val _lastError = MutableStateFlow<String?>(null)
         val lastError: StateFlow<String?> = _lastError
-
-        // Multi-account patch: per-account live stats and connected count,
-        // fed by the MultiUpstreamSessionPool's stats tracker.
-        private val _multiAccountStats = MutableStateFlow<List<AccountLiveStats>>(emptyList())
-        val multiAccountStats: StateFlow<List<AccountLiveStats>> = _multiAccountStats
-
-        private val _connectedAccountCount = MutableStateFlow(0)
-        val connectedAccountCount: StateFlow<Int> = _connectedAccountCount
 
         fun start(context: Context) {
             context.startForegroundService(Intent(context, FoxyVpnService::class.java).setAction(ACTION_CONNECT))
