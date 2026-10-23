@@ -13,7 +13,8 @@ import com.vauth.foxyvpn.ui.screens.LogsScreen
 import com.vauth.foxyvpn.ui.screens.ServerListScreen
 import com.vauth.foxyvpn.ui.screens.SettingsScreen
 import com.vauth.foxyvpn.ui.screens.SplashScreen
-import com.vauth.foxyvpn.ui.theme.ThemeController
+import com.vauth.foxyvpn.ui.screens.transitionTransform
+import com.vauth.foxyvpn.ui.theme.AppearanceController
 
 object FoxyRoutes {
     const val SPLASH = "splash"
@@ -29,11 +30,20 @@ object FoxyRoutes {
 fun FoxyNavGraph(
     navController: NavHostController = rememberNavController(),
     app: FoxyVpnApp,
-    themeController: ThemeController,
+    appearance: AppearanceController,
     onRequestConnect: () -> Unit,
     onDisconnect: () -> Unit,
 ) {
-    NavHost(navController = navController, startDestination = FoxyRoutes.SPLASH) {
+    val transition = transitionTransform(appearance.screenTransition, appearance.reduceMotion)
+
+    NavHost(
+        navController = navController,
+        startDestination = FoxyRoutes.SPLASH,
+        enterTransition = { transition.targetContentEnter },
+        exitTransition = { transition.targetContentExit },
+        popEnterTransition = { transition.targetContentEnter },
+        popExitTransition = { transition.targetContentExit },
+    ) {
         composable(FoxyRoutes.SPLASH) {
             SplashScreen(
                 authRepository = app.authRepository,
@@ -56,7 +66,7 @@ fun FoxyNavGraph(
         composable(FoxyRoutes.HOME) {
             HomeScreen(
                 app = app,
-                themeController = themeController,
+                appearance = appearance,
                 onRequestConnect = onRequestConnect,
                 onDisconnect = onDisconnect,
                 onOpenServers = { navController.navigate(FoxyRoutes.SERVERS) },
@@ -68,13 +78,24 @@ fun FoxyNavGraph(
             ServerListScreen(
                 serverListClient = app.serverListClient,
                 proxyStateStore = app.proxyStateStore,
-                onServerSelected = { navController.popBackStack() },
+                settingsStore = app.settingsStore,
+                appearance = appearance,
+                onServerSelected = {
+                    if (appearance.homeAfterSelect) {
+                        navController.navigate(FoxyRoutes.HOME) {
+                            popUpTo(FoxyRoutes.HOME) { inclusive = true }
+                        }
+                    } else {
+                        navController.popBackStack()
+                    }
+                },
                 onBack = { navController.popBackStack() },
             )
         }
         composable(FoxyRoutes.SETTINGS) {
             SettingsScreen(
                 settingsStore = app.settingsStore,
+                appearance = appearance,
                 onOpenLogs = { navController.navigate(FoxyRoutes.LOGS) },
                 onOpenAccount = { navController.navigate(FoxyRoutes.ACCOUNT) },
                 onSignOut = {
@@ -89,6 +110,7 @@ fun FoxyNavGraph(
             AccountScreen(
                 authRepository = app.authRepository,
                 tokenStore = app.tokenStore,
+                appearance = appearance,
                 onBack = { navController.popBackStack() },
             )
         }
