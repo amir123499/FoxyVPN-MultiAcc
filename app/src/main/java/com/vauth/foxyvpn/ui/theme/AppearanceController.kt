@@ -65,7 +65,7 @@ class AppearanceController(private val settingsStore: SettingsStore) {
         themeMode = next
     }
 
-    /** AMOLED switch: maps onto ThemeMode.AMOLED like ZedSecure's amoledBlack. */
+    /** AMOLED switch: maps onto ThemeMode.AMOLED. */
     fun updateAmoled(on: Boolean) {
         updateThemeMode(if (on) ThemeMode.AMOLED else ThemeMode.SYSTEM)
     }
