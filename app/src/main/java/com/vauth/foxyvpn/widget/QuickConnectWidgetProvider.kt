@@ -108,7 +108,7 @@ class QuickConnectWidgetProvider : AppWidgetProvider() {
             val isDark = when (settingsStore.themeMode) {
                 ThemeMode.SYSTEM -> systemDark
                 ThemeMode.LIGHT -> false
-                ThemeMode.DARK -> true
+                ThemeMode.DARK, ThemeMode.AMOLED -> true
             }
 
             val bgRes = when (state) {
