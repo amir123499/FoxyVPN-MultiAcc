@@ -44,11 +44,11 @@ android {
     ndkVersion = "26.1.10909125"
 
     defaultConfig {
-        applicationId = "com.aistudio.foxyvpn.multiacc"
+        applicationId = "com.vauth.foxyvpn"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 43
+        versionName = "1.0.6"
 
         externalNativeBuild {
             ndkBuild {
