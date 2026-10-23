@@ -1,25 +1,28 @@
 package com.vauth.foxyvpn.ui.screens
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,40 +33,153 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Power
+import androidx.compose.material3.ContainedLoadingIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.toPath
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.runtime.withInfiniteAnimationFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.Matrix
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.graphics.shapes.Morph
+import androidx.graphics.shapes.RoundedPolygon
 import com.vauth.foxyvpn.data.model.ConnectionState
 import com.vauth.foxyvpn.ui.theme.ConnectButtonStyle
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlinx.coroutines.delay
 
-private val PressSpring = spring<Float>(dampingRatio = 0.35f, stiffness = 700f)
-private val MorphSpring = spring<Float>(dampingRatio = 0.7f, stiffness = Spring.StiffnessMedium)
+// ─── Motion budget (1:1 from ZedSecure ui/theme/MotionBudget.kt) ─────────────
+
+enum class MotionBudget { Full, Throttled, Paused }
+
+val LocalMotionBudget = compositionLocalOf { MotionBudget.Full }
+
+// ─── Portal clock (1:1 from ZedSecure PortalHome.kt:312-326) ─────────────────
+// Runs ONLY when `running` is true — idle screens do zero per-frame work.
+
+@Composable
+fun rememberPortalClock(running: Boolean): State<Float> {
+    val time = remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(running) {
+        if (!running) return@LaunchedEffect
+        val base = time.floatValue
+        var start = -1L
+        while (true) {
+            withInfiniteAnimationFrameNanos { now ->
+                if (start < 0L) start = now
+                time.floatValue = base + (now - start) / 1_000_000_000f
+            }
+        }
+    }
+    return time
+}
+
+// ─── Shape constants (1:1 from ZedSecure PortalHome.kt:129-141) ──────────────
+
+val SearchShapes: List<RoundedPolygon> = listOf(
+    MaterialShapes.SoftBurst,
+    MaterialShapes.Cookie9Sided,
+    MaterialShapes.Pentagon,
+    MaterialShapes.Pill,
+    MaterialShapes.Sunny,
+    MaterialShapes.Cookie4Sided,
+    MaterialShapes.Oval,
+)
+
+const val SEARCH_STEP_SECONDS = 0.72f
+
+private const val TUNNEL_RINGS = 6
+
+/** 1:1 from ZedSecure PixelHome.kt */
+private val DoorSpring = spring<Dp>(dampingRatio = 0.7f, stiffness = Spring.StiffnessMediumLow)
+
+// ─── Scoped elapsed-seconds timer ────────────────────────────────────────────
+// Lives inside the connect core: only the elapsed Text recomposes each tick,
+// never the whole home screen (this was a major v1.2 lag source).
+
+@Composable
+private fun rememberElapsedSeconds(state: ConnectionState): Int {
+    var elapsed by remember { mutableIntStateOf(0) }
+    LaunchedEffect(state) {
+        if (state == ConnectionState.CONNECTED) {
+            val start = System.currentTimeMillis()
+            while (true) {
+                delay(1_000L)
+                elapsed = ((System.currentTimeMillis() - start) / 1_000L).toInt()
+            }
+        } else {
+            elapsed = 0
+        }
+    }
+    return elapsed
+}
+
+private const val TABULAR = "tnum"
+
+private fun tabularDigits(text: String): AnnotatedString = buildAnnotatedString {
+    var start = 0
+    while (start < text.length) {
+        val digits = text[start].isDigit()
+        var end = start + 1
+        while (end < text.length && text[end].isDigit() == digits) end++
+        val from = length
+        append(text, start, end)
+        if (digits) addStyle(SpanStyle(fontFeatureSettings = TABULAR), from, length)
+        start = end
+    }
+}
+
+// ─── Entry point ─────────────────────────────────────────────────────────────
 
 /**
- * The rebuilt connect core (Bug 1): springy press feedback, smooth morphing
- * between disconnected → connecting → connected, and a lively breathing
- * pulse while connected. One shared animation core, six visual styles.
+ * ZedSecure-faithful connect core (v1.3): every animation parameter mirrors
+ * ZedSecure's implementation 1:1 — same springs, same tweens, same easings,
+ * same shapes, same sizes, same colors, same motion budget gating.
+ * Idle screens perform ZERO per-frame work.
  */
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun ConnectCore(
     state: ConnectionState,
@@ -71,407 +187,293 @@ fun ConnectCore(
     reduceMotion: Boolean = false,
     connectColor: Color? = null,
     connectedColor: Color? = null,
-    elapsedText: String? = null,
     onToggle: () -> Unit,
 ) {
-    val cs = MaterialTheme.colorScheme
     val live = state == ConnectionState.CONNECTED
-    val busy = state == ConnectionState.CONNECTING
-
-    val idleColor = connectColor ?: cs.primary
-    val activeColor = connectedColor ?: cs.primary
-    val container by animateColorAsState(
-        targetValue = when {
-            live -> activeColor
-            busy -> cs.tertiary
-            else -> idleColor
-        },
-        animationSpec = if (reduceMotion) tween(120) else tween(450),
-        label = "core-color",
-    )
-    val onContainer = container.readableOn()
-
-    val source = remember { MutableInteractionSource() }
-    val pressed by source.collectIsPressedAsState()
-    val pressScale by animateFloatAsState(
-        targetValue = if (pressed) 0.88f else 1f,
-        animationSpec = if (reduceMotion) tween(80) else PressSpring,
-        label = "core-press",
-    )
+    val searching = state == ConnectionState.CONNECTING
+    val budget = LocalMotionBudget.current
+    // 1:1 from ZedSecure PixelHome.kt
+    val animate = !reduceMotion && when (budget) {
+        MotionBudget.Full -> true
+        MotionBudget.Throttled -> searching
+        MotionBudget.Paused -> false
+    }
+    val clock = rememberPortalClock(animate && (live || searching))
     val haptics = LocalHapticFeedback.current
 
-    Box(
-        modifier = Modifier.graphicsLayer {
-            scaleX = pressScale
-            scaleY = pressScale
-        },
-        contentAlignment = Alignment.Center,
-    ) {
-        // Lively breathing pulse rings while connected.
-        if (live && !reduceMotion) {
-            ConnectedPulseRings(color = container)
+    // 1:1 from ZedSecure PixelHome.kt: haptic + one-shot celebration on connect.
+    var celebrate by remember { mutableIntStateOf(0) }
+    var previous by remember { mutableStateOf(state) }
+    LaunchedEffect(state) {
+        if (state == ConnectionState.CONNECTED && previous == ConnectionState.CONNECTING) {
+            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            if (!reduceMotion) celebrate++
         }
-        Box(
-            modifier = Modifier.combinedClickable(
-                interactionSource = source,
-                indication = null,
-                role = Role.Button,
-                onClick = {
+        previous = state
+    }
+
+    when (style) {
+        ConnectButtonStyle.Hero -> BoxWithConstraints(
+            modifier = Modifier.fillMaxWidth(),
+            contentAlignment = Alignment.Center,
+        ) {
+            // 1:1 from ZedSecure PixelHome.kt: full = minOf(maxWidth*0.52, maxHeight*0.46)
+            // coerced to 116.dp..208.dp. (No details panel in our app, so no `small` size.)
+            val full = (maxWidth * 0.52f).coerceIn(116.dp, 208.dp)
+            PixelDoor(
+                state = state,
+                doorSize = full,
+                clock = clock,
+                animate = animate,
+                celebrate = celebrate,
+                reduceMotion = reduceMotion,
+                onTap = {
                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                     onToggle()
                 },
-            ),
-            contentAlignment = Alignment.Center,
-        ) {
-            when (style) {
-                ConnectButtonStyle.Hero -> HeroCore(
-                    live = live, busy = busy, reduceMotion = reduceMotion,
-                    container = container, onContainer = onContainer,
-                    elapsedText = elapsedText,
-                )
-                ConnectButtonStyle.Ring -> RingCore(
-                    live = live, busy = busy, reduceMotion = reduceMotion,
-                    container = container, onContainer = onContainer,
-                )
-                ConnectButtonStyle.Pill -> PillCore(
-                    live = live, busy = busy, reduceMotion = reduceMotion,
-                    container = container, onContainer = onContainer,
-                )
-                ConnectButtonStyle.Bar -> BarCore(
-                    live = live, busy = busy, reduceMotion = reduceMotion,
-                    container = container, onContainer = onContainer,
-                )
-                ConnectButtonStyle.Icon -> IconCore(
-                    live = live, busy = busy, reduceMotion = reduceMotion,
-                    container = container, onContainer = onContainer,
-                )
-                ConnectButtonStyle.Switch -> SwitchCore(
-                    live = live, busy = busy, reduceMotion = reduceMotion,
-                    container = container, onContainer = onContainer,
-                )
-            }
-        }
-    }
-}
-
-/** Two staggered expanding rings that breathe while connected. */
-@Composable
-private fun ConnectedPulseRings(color: Color) {
-    val transition = rememberInfiniteTransition(label = "pulse")
-    repeat(2) { index ->
-        val progress by transition.animateFloat(
-            initialValue = 0f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(2200, easing = FastOutSlowInEasing),
-                repeatMode = RepeatMode.Restart,
-                initialStartOffset = androidx.compose.animation.core.StartOffset(index * 1100),
-            ),
-            label = "pulse-$index",
-        )
-        Canvas(Modifier.size(210.dp)) {
-            drawCircle(
-                color = color.copy(alpha = (1f - progress) * 0.35f),
-                radius = size.minDimension / 2f * (0.72f + 0.38f * progress),
-                style = Stroke(width = (10f * (1f - progress) + 2f)),
             )
         }
+        ConnectButtonStyle.Ring -> RingConnect(state, onToggle, connectColor, connectedColor)
+        ConnectButtonStyle.Bar -> BarConnect(state, onToggle, connectColor, connectedColor)
+        ConnectButtonStyle.Icon -> IconConnect(state, onToggle, connectColor, connectedColor)
+        ConnectButtonStyle.Switch -> SwitchConnect(state, onToggle, connectColor, connectedColor)
+        ConnectButtonStyle.Pill -> PillConnect(state, onToggle, connectColor, connectedColor)
     }
 }
 
-private fun Color.readableOn(): Color =
-    if (luminance() > 0.5f) Color(0xFF101418) else Color.White
+// ─── Pixel door — 1:1 from ZedSecure PixelHome.kt PixelDoor ──────────────────
 
-/** Hero: big morphing blob — circle idle, soft blooming squircle when live. */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalFoundationApi::class)
 @Composable
-private fun HeroCore(
-    live: Boolean,
-    busy: Boolean,
+private fun PixelDoor(
+    state: ConnectionState,
+    doorSize: Dp,
+    clock: State<Float>,
+    animate: Boolean,
+    celebrate: Int,
     reduceMotion: Boolean,
-    container: Color,
-    onContainer: Color,
-    elapsedText: String?,
+    onTap: () -> Unit,
 ) {
     val cs = MaterialTheme.colorScheme
-    val morph by animateFloatAsState(
-        targetValue = if (live) 1f else 0f,
-        animationSpec = if (reduceMotion) tween(150) else MorphSpring,
-        label = "hero-morph",
+    val searching = state == ConnectionState.CONNECTING
+    val live = state == ConnectionState.CONNECTED
+
+    // 1:1: shape step timer only while searching.
+    var step by remember { mutableIntStateOf(0) }
+    LaunchedEffect(searching, animate) {
+        if (!searching || !animate) return@LaunchedEffect
+        snapshotFlow { (clock.value / SEARCH_STEP_SECONDS).toInt() }.collect { step = it }
+    }
+
+    // 1:1 shape targets.
+    val target: RoundedPolygon = when {
+        live -> MaterialShapes.SoftBurst
+        searching -> SearchShapes[step.mod(SearchShapes.size)]
+        else -> MaterialShapes.Cookie12Sided
+    }
+    var from by remember { mutableStateOf(MaterialShapes.Cookie12Sided) }
+    var to by remember { mutableStateOf(MaterialShapes.Cookie12Sided) }
+    var progress by remember { mutableFloatStateOf(1f) }
+    LaunchedEffect(target) {
+        if (target === to) return@LaunchedEffect
+        Snapshot.withMutableSnapshot {
+            from = if (progress >= 0.5f) to else from
+            to = target
+            progress = 0f
+        }
+        // 1:1: spring(dampingRatio = 0.6f, stiffness = 260f)
+        animate(0f, 1f, animationSpec = spring(dampingRatio = 0.6f, stiffness = 260f)) { value, _ ->
+            progress = value
+        }
+    }
+    val morph = remember(from, to) { Morph(from, to) }
+
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    // 1:1: 0.9f pressed, fastSpatialSpec
+    val squash by animateFloatAsState(
+        if (pressed) 0.9f else 1f,
+        MaterialTheme.motionScheme.fastSpatialSpec(),
+        label = "pixel-door-squash",
     )
-    val size: Dp by animateDpAsState(
-        targetValue = if (live) 184.dp else 168.dp,
-        animationSpec = if (reduceMotion) tween<Dp>(150) else spring<Dp>(dampingRatio = 0.6f, stiffness = 320f),
-        label = "hero-size",
+    val effects = MaterialTheme.motionScheme.defaultEffectsSpec<Color>()
+    val start by animateColorAsState(cs.primary, effects, label = "pixel-door-a")
+    // 1:1: tertiary while live or searching, else primary.
+    val end by animateColorAsState(
+        if (live || searching) cs.tertiary else cs.primary,
+        effects,
+        label = "pixel-door-b",
     )
-    val corner = (50f - 26f * morph)
+    val elapsed = rememberElapsedSeconds(state)
+    val work = remember { Path() }
+    val density = LocalDensity.current
+
     Box(
-        modifier = Modifier
-            .size(size)
-            .clip(RoundedCornerShape(corner))
-            .background(
-                Brush.linearGradient(
-                    listOf(container, cs.tertiary.copy(alpha = 0.85f)),
-                ),
+        Modifier
+            .size(doorSize)
+            .graphicsLayer {
+                scaleX = squash
+                scaleY = squash
+            }
+            .combinedClickable(
+                interactionSource = source,
+                indication = null,
+                role = Role.Button,
+                onClick = onTap,
             ),
         contentAlignment = Alignment.Center,
     ) {
-        if (busy) {
-            ConnectingArc(color = onContainer, reduceMotion = reduceMotion, size = 64.dp)
-        } else if (live && elapsedText != null) {
-            Text(
-                text = elapsedText,
-                style = MaterialTheme.typography.headlineMediumEmphasized,
-                color = onContainer,
-            )
-        } else {
-            val iconScale by animateFloatAsState(
-                targetValue = if (live) 0.8f else 1f,
-                animationSpec = if (reduceMotion) tween(120) else PressSpring,
-                label = "hero-icon",
-            )
-            Icon(
-                imageVector = Icons.Filled.Power,
-                contentDescription = if (live) "Disconnect" else "Connect",
-                tint = onContainer,
-                modifier = Modifier
-                    .size(60.dp)
-                    .graphicsLayer { scaleX = iconScale; scaleY = iconScale },
-            )
+        Canvas(Modifier.matchParentSize()) {
+            work.rewind()
+            morph.toPath(progress.coerceIn(0f, 1f), work)
+            work.transform(Matrix().apply { scale(size.width, size.height) })
+            val bounds = work.getBounds()
+            work.translate(center - bounds.center)
+            // 1:1 rotation speeds.
+            val turn = when {
+                searching && animate -> clock.value * 150f
+                live && animate -> clock.value * 9f
+                else -> 0f
+            }
+            // 1:1 brushes: sweep while searching, linear otherwise.
+            val brush = if (searching) {
+                Brush.sweepGradient(listOf(start, end, start), center)
+            } else {
+                Brush.linearGradient(listOf(start, end), Offset.Zero, Offset(size.width, size.height))
+            }
+            rotate(turn) { drawPath(work, brush) }
         }
-    }
-}
-
-/** Ring: circle wrapped in an animated glowing ring. */
-@Composable
-private fun RingCore(
-    live: Boolean,
-    busy: Boolean,
-    reduceMotion: Boolean,
-    container: Color,
-    onContainer: Color,
-) {
-    val ringWidth by animateDpAsState(
-        targetValue = if (live) 14.dp else 6.dp,
-        animationSpec = if (reduceMotion) tween<Dp>(120) else spring<Dp>(dampingRatio = 0.7f, stiffness = Spring.StiffnessMedium),
-        label = "ring-width",
-    )
-    Box(contentAlignment = Alignment.Center) {
-        Canvas(Modifier.size(196.dp)) {
-            drawCircle(
-                color = container.copy(alpha = 0.35f),
-                radius = size.minDimension / 2f,
-                style = Stroke(width = ringWidth.toPx()),
-            )
-        }
-        Box(
-            modifier = Modifier
-                .size(148.dp)
-                .clip(CircleShape)
-                .background(container),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (busy) {
-                ConnectingArc(color = onContainer, reduceMotion = reduceMotion, size = 52.dp)
+        // 1:1 center content: fadeIn(260) togetherWith fadeOut(200).
+        AnimatedContent(
+            targetState = live,
+            transitionSpec = { fadeIn(tween(260)) togetherWith fadeOut(tween(200)) },
+            label = "pixel-door-center",
+        ) { open ->
+            if (open) {
+                Text(
+                    text = tabularDigits(formatElapsed(elapsed)),
+                    style = MaterialTheme.typography.headlineSmallEmphasized.copy(
+                        // 1:1: fontSize = doorSize * 0.14f
+                        fontSize = with(density) { (doorSize * 0.14f).toSp() },
+                    ),
+                    color = cs.onPrimary,
+                    maxLines = 1,
+                    softWrap = false,
+                )
             } else {
                 Icon(
-                    imageVector = Icons.Filled.Power,
-                    contentDescription = if (live) "Disconnect" else "Connect",
-                    tint = onContainer,
-                    modifier = Modifier.size(52.dp),
+                    Icons.Filled.Power,
+                    contentDescription = null,
+                    tint = cs.onPrimary,
+                    // 1:1: icon size = doorSize * 0.32f
+                    modifier = Modifier.size(doorSize * 0.32f),
                 )
+            }
+        }
+        CelebrationBurst(celebrate, Modifier.matchParentSize())
+    }
+}
+
+// ─── Celebration burst — 1:1 from ZedSecure PixelHome.kt ─────────────────────
+
+private const val BURST_BITS = 16
+
+@Composable
+private fun CelebrationBurst(trigger: Int, modifier: Modifier = Modifier) {
+    val cs = MaterialTheme.colorScheme
+    val colors = listOf(cs.primary, cs.tertiary, cs.secondary, cs.tertiaryContainer, cs.secondaryContainer)
+    val progress = remember { Animatable(1f) }
+    LaunchedEffect(trigger) {
+        if (trigger == 0) return@LaunchedEffect
+        progress.snapTo(0f)
+        // 1:1: tween(950, FastOutSlowInEasing)
+        progress.animateTo(1f, tween(950, easing = FastOutSlowInEasing))
+    }
+    Canvas(modifier) {
+        val p = progress.value
+        if (p >= 1f) return@Canvas
+        val bit = 5.dp.toPx()
+        val reach = size.minDimension * 0.9f
+        for (i in 0 until BURST_BITS) {
+            val a = i * (2f * PI.toFloat() / BURST_BITS) + 0.35f
+            val d = size.minDimension * 0.42f + reach * p
+            val pos = Offset(center.x + cos(a) * d, center.y + sin(a) * d)
+            val color = colors[i % colors.size].copy(alpha = (1f - p).coerceIn(0f, 1f))
+            val s = bit * (1f - p * 0.35f)
+            if (i % 2 == 0) {
+                drawCircle(color, s, pos)
+            } else {
+                drawRoundRect(color, pos - Offset(s, s), Size(s * 2f, s * 2f), CornerRadius(s * 0.6f))
             }
         }
     }
 }
 
-/** Pill: wide friendly pill with icon + label. */
+// ─── Alt connect controls — 1:1 from ZedSecure ConnectControls.kt ────────────
+
 @Composable
-private fun PillCore(
-    live: Boolean,
-    busy: Boolean,
-    reduceMotion: Boolean,
-    container: Color,
-    onContainer: Color,
-) {
-    val width: Dp by animateDpAsState(
-        targetValue = if (live) 220.dp else 196.dp,
-        animationSpec = if (reduceMotion) tween<Dp>(120) else spring<Dp>(dampingRatio = 0.6f, stiffness = 380f),
-        label = "pill-width",
-    )
-    Row(
-        modifier = Modifier
-            .width(width)
-            .height(88.dp)
-            .clip(RoundedCornerShape(44.dp))
-            .background(container)
-            .padding(horizontal = 28.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (busy) {
-            ConnectingArc(color = onContainer, reduceMotion = reduceMotion, size = 36.dp)
-        } else {
-            Icon(
-                imageVector = Icons.Filled.Power,
-                contentDescription = null,
-                tint = onContainer,
-                modifier = Modifier.size(36.dp),
-            )
-        }
-        Spacer(Modifier.width(14.dp))
-        Text(
-            text = when {
-                busy -> "Connecting…"
-                live -> "Connected"
-                else -> "Connect"
-            },
-            style = MaterialTheme.typography.titleLargeEmphasized,
-            color = onContainer,
-            maxLines = 1,
-        )
-    }
+private fun containerFor(
+    state: ConnectionState,
+    custom: Color?,
+    customActive: Color?,
+): Color {
+    val idle = custom ?: MaterialTheme.colorScheme.primary
+    val active = customActive ?: MaterialTheme.colorScheme.secondaryContainer
+    // 1:1: no Error state in our model; isActive == CONNECTED.
+    val target = if (state == ConnectionState.CONNECTED) active else idle
+    // 1:1: default animation spec.
+    val animated by animateColorAsState(target, label = "alt-connect-container")
+    return animated
 }
 
-/** Bar: full-width bar that fills up as it connects. */
 @Composable
-private fun BarCore(
-    live: Boolean,
-    busy: Boolean,
-    reduceMotion: Boolean,
-    container: Color,
-    onContainer: Color,
+private fun contentFor(container: Color): Color =
+    // 1:1: luminance > 0.5 -> 0xFF10131A else White.
+    if (container.luminance() > 0.5f) Color(0xFF10131A) else Color.White
+
+private fun label(state: ConnectionState): String = when (state) {
+    ConnectionState.CONNECTING -> "Cancel"
+    ConnectionState.CONNECTED -> "Disconnect"
+    else -> "Connect"
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun RingConnect(
+    state: ConnectionState,
+    onToggle: () -> Unit,
+    custom: Color?,
+    customActive: Color?,
 ) {
-    val cs = MaterialTheme.colorScheme
-    val fill by animateFloatAsState(
-        targetValue = when {
-            live -> 1f
-            busy -> 0.55f
-            else -> 0.12f
-        },
-        animationSpec = if (reduceMotion) tween(150) else spring(dampingRatio = 0.65f, stiffness = 220f),
-        label = "bar-fill",
-    )
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(72.dp)
-            .clip(RoundedCornerShape(24.dp))
-            .background(cs.surfaceContainerHighest),
-        contentAlignment = Alignment.Center,
-    ) {
-        Box(
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    // 1:1: 0.94f pressed, default spec.
+    val scale by animateFloatAsState(if (pressed) 0.94f else 1f, label = "ring-scale")
+    // 1:1: 8.dp active / 3.dp idle, default spec.
+    val ring by animateDpAsState(if (state == ConnectionState.CONNECTED) 8.dp else 3.dp, label = "ring-width")
+    val container = containerFor(state, custom, customActive)
+    val content = contentFor(container)
+    val transitioning = state == ConnectionState.CONNECTING
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Surface(
+            onClick = onToggle,
+            shape = CircleShape,
+            color = container,
+            contentColor = content,
+            interactionSource = interaction,
             modifier = Modifier
-                .fillMaxWidth(fill)
-                .height(72.dp)
-                .clip(RoundedCornerShape(24.dp))
-                .background(container)
-                .align(Alignment.CenterStart),
-        )
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = Icons.Filled.Power,
-                contentDescription = null,
-                tint = if (fill > 0.5f) onContainer else cs.onSurfaceVariant,
-                modifier = Modifier.size(30.dp),
-            )
-            Spacer(Modifier.width(10.dp))
-            Text(
-                text = when {
-                    busy -> "Connecting…"
-                    live -> "Connected — tap to disconnect"
-                    else -> "Tap to connect"
-                },
-                style = MaterialTheme.typography.titleMediumEmphasized,
-                color = if (fill > 0.5f) onContainer else cs.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-/** Icon: compact bouncy rounded square. */
-@Composable
-private fun IconCore(
-    live: Boolean,
-    busy: Boolean,
-    reduceMotion: Boolean,
-    container: Color,
-    onContainer: Color,
-) {
-    val corner by animateDpAsState(
-        targetValue = if (live) 36.dp else 28.dp,
-        animationSpec = if (reduceMotion) tween<Dp>(120) else spring<Dp>(dampingRatio = 0.7f, stiffness = Spring.StiffnessMedium),
-        label = "icon-corner",
-    )
-    Box(
-        modifier = Modifier
-            .size(112.dp)
-            .clip(RoundedCornerShape(corner))
-            .background(container),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (busy) {
-            ConnectingArc(color = onContainer, reduceMotion = reduceMotion, size = 44.dp)
-        } else {
-            Icon(
-                imageVector = Icons.Filled.Power,
-                contentDescription = if (live) "Disconnect" else "Connect",
-                tint = onContainer,
-                modifier = Modifier.size(48.dp),
-            )
-        }
-    }
-}
-
-/** Switch: a big friendly toggle switch. */
-@Composable
-private fun SwitchCore(
-    live: Boolean,
-    busy: Boolean,
-    reduceMotion: Boolean,
-    container: Color,
-    onContainer: Color,
-) {
-    val cs = MaterialTheme.colorScheme
-    val track by animateColorAsState(
-        targetValue = if (live || busy) container else cs.surfaceContainerHighest,
-        animationSpec = if (reduceMotion) tween(120) else tween(350),
-        label = "switch-track",
-    )
-    Box(
-        modifier = Modifier
-            .width(168.dp)
-            .height(96.dp)
-            .clip(RoundedCornerShape(48.dp))
-            .background(track)
-            .padding(10.dp),
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        val thumbOffset by animateDpAsState(
-            targetValue = if (live) 62.dp else 0.dp,
-            animationSpec = if (reduceMotion) tween<Dp>(120)
-            else spring<Dp>(dampingRatio = 0.45f, stiffness = 500f),
-            label = "switch-thumb",
-        )
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Spacer(Modifier.width(thumbOffset))
-            Box(
-                modifier = Modifier
-                    .size(76.dp)
-                    .clip(CircleShape)
-                    .background(if (live || busy) onContainer else cs.onSurfaceVariant),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (busy) {
-                    ConnectingArc(
-                        color = if (live || busy) container else cs.surface,
-                        reduceMotion = reduceMotion,
-                        size = 34.dp,
-                    )
+                .size(132.dp)
+                .scale(scale)
+                .border(ring, content.copy(alpha = 0.35f), CircleShape),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                if (transitioning) {
+                    ContainedLoadingIndicator(Modifier.size(38.dp))
                 } else {
                     Icon(
-                        imageVector = Icons.Filled.Power,
-                        contentDescription = if (live) "Disconnect" else "Connect",
-                        tint = if (live) container else cs.surface,
-                        modifier = Modifier.size(36.dp),
+                        if (state == ConnectionState.CONNECTED) Icons.Filled.Close else Icons.Filled.Bolt,
+                        contentDescription = label(state),
+                        modifier = Modifier.size(46.dp),
                     )
                 }
             }
@@ -479,38 +481,208 @@ private fun SwitchCore(
     }
 }
 
-/** Spinning arc shown while connecting. */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun ConnectingArc(color: Color, reduceMotion: Boolean, size: Dp) {
-    if (reduceMotion) {
-        Canvas(Modifier.size(size)) {
-            drawArc(
-                color = color,
-                startAngle = 0f,
-                sweepAngle = 270f,
-                useCenter = false,
-                style = Stroke(width = 8f, cap = StrokeCap.Round),
+private fun BarConnect(
+    state: ConnectionState,
+    onToggle: () -> Unit,
+    custom: Color?,
+    customActive: Color?,
+) {
+    val container = containerFor(state, custom, customActive)
+    val content = contentFor(container)
+    val transitioning = state == ConnectionState.CONNECTING
+    Surface(
+        onClick = onToggle,
+        shape = RoundedCornerShape(14.dp),
+        color = container,
+        contentColor = content,
+        modifier = Modifier.fillMaxWidth().height(54.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            if (transitioning) {
+                ContainedLoadingIndicator(Modifier.size(20.dp))
+            } else {
+                Box(
+                    Modifier
+                        .size(10.dp)
+                        .clip(CircleShape)
+                        .background(content.copy(alpha = if (state == ConnectionState.CONNECTED) 1f else 0.55f)),
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Text(
+                label(state),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
             )
         }
-        return
     }
-    val rotation = remember { Animatable(0f) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            rotation.animateTo(rotation.value + 360f, tween(1100, easing = LinearEasing))
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun IconConnect(
+    state: ConnectionState,
+    onToggle: () -> Unit,
+    custom: Color?,
+    customActive: Color?,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    // 1:1: 34.dp pressed / 24.dp idle, fastSpatialSpec.
+    val radius by animateDpAsState(
+        if (pressed) 34.dp else 24.dp,
+        MaterialTheme.motionScheme.fastSpatialSpec(),
+        label = "icon-radius",
+    )
+    val container = containerFor(state, custom, customActive)
+    val content = contentFor(container)
+    val transitioning = state == ConnectionState.CONNECTING
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Surface(
+            onClick = onToggle,
+            shape = RoundedCornerShape(radius),
+            color = container,
+            contentColor = content,
+            interactionSource = interaction,
+            modifier = Modifier.size(76.dp),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                if (transitioning) {
+                    ContainedLoadingIndicator(Modifier.size(26.dp))
+                } else {
+                    Icon(
+                        if (state == ConnectionState.CONNECTED) Icons.Filled.Close else Icons.Filled.Bolt,
+                        contentDescription = label(state),
+                        modifier = Modifier.size(30.dp),
+                    )
+                }
+            }
         }
     }
-    Canvas(
-        Modifier
-            .size(size)
-            .graphicsLayer { rotationZ = rotation.value },
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun SwitchConnect(
+    state: ConnectionState,
+    onToggle: () -> Unit,
+    custom: Color?,
+    customActive: Color?,
+) {
+    val container = containerFor(state, custom, customActive)
+    val content = contentFor(container)
+    val active = state == ConnectionState.CONNECTED
+    val transitioning = state == ConnectionState.CONNECTING
+    // 1:1: align 1f / -1f, default spec.
+    val align by animateFloatAsState(if (active) 1f else -1f, label = "switch-align")
+    Surface(
+        onClick = onToggle,
+        shape = RoundedCornerShape(34.dp),
+        color = container,
+        contentColor = content,
+        modifier = Modifier.fillMaxWidth().height(68.dp),
     ) {
-        drawArc(
-            color = color,
-            startAngle = 0f,
-            sweepAngle = 270f,
-            useCenter = false,
-            style = Stroke(width = 10f, cap = StrokeCap.Round),
-        )
+        Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.CenterStart) {
+            Box(
+                Modifier.fillMaxWidth(),
+                contentAlignment = androidx.compose.ui.BiasAlignment(align, 0f),
+            ) {
+                Box(
+                    Modifier
+                        .size(52.dp)
+                        .clip(CircleShape)
+                        .background(content.copy(alpha = 0.22f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (transitioning) {
+                        ContainedLoadingIndicator(Modifier.size(22.dp))
+                    } else {
+                        Icon(
+                            if (active) Icons.Filled.Close else Icons.Filled.Bolt,
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+                }
+            }
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                // 1:1: fadeIn togetherWith fadeOut.
+                AnimatedContent(
+                    targetState = label(state),
+                    transitionSpec = { fadeIn() togetherWith fadeOut() },
+                    label = "switch-label",
+                ) { text ->
+                    Text(
+                        text,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Pill style in ZedSecure's motion language (ZedSecure has no Pill control —
+ * press 0.94, default specs, fading label, expressive loading indicator).
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun PillConnect(
+    state: ConnectionState,
+    onToggle: () -> Unit,
+    custom: Color?,
+    customActive: Color?,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.94f else 1f, label = "pill-scale")
+    val container = containerFor(state, custom, customActive)
+    val content = contentFor(container)
+    val transitioning = state == ConnectionState.CONNECTING
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Surface(
+            onClick = onToggle,
+            shape = RoundedCornerShape(50),
+            color = container,
+            contentColor = content,
+            interactionSource = interaction,
+            modifier = Modifier.scale(scale),
+        ) {
+            Row(
+                Modifier.padding(horizontal = 28.dp, vertical = 18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                if (transitioning) {
+                    ContainedLoadingIndicator(Modifier.size(26.dp))
+                } else {
+                    Icon(
+                        if (state == ConnectionState.CONNECTED) Icons.Filled.Close else Icons.Filled.Bolt,
+                        contentDescription = null,
+                        modifier = Modifier.size(28.dp),
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                AnimatedContent(
+                    targetState = label(state),
+                    transitionSpec = { fadeIn() togetherWith fadeOut() },
+                    label = "pill-label",
+                ) { text ->
+                    Text(
+                        text,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+        }
     }
 }
