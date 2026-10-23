@@ -72,6 +72,7 @@ private const val GITHUB_URL = "https://github.com/vauth/foxyvpn"
 @Composable
 fun SettingsScreen(
     settingsStore: SettingsStore,
+    appearance: AppearanceController,
     onOpenLogs: () -> Unit,
     onOpenAccount: () -> Unit,
     onSignOut: () -> Unit,
@@ -96,7 +97,6 @@ fun SettingsScreen(
     var upstreamProxyUsername by remember { mutableStateOf(settingsStore.upstreamProxyUsername) }
     var upstreamProxyPassword by remember { mutableStateOf(settingsStore.upstreamProxyPassword) }
     var excludedApps by remember { mutableStateOf(settingsStore.excludedApps) }
-    var appDesign by remember { mutableStateOf(settingsStore.appDesign) }
     var blockAds by remember { mutableStateOf(settingsStore.dnsProvider == SettingsStore.DnsProvider.ADGUARD) }
     var showDnsProviderDialog by remember { mutableStateOf(false) }
     var showBootstrapDnsDialog by remember { mutableStateOf(false) }
@@ -267,34 +267,7 @@ fun SettingsScreen(
                 )
             }
 
-            SettingsSection(title = "Appearance") {
-                Text(
-                    text = "Home screen design",
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp)
-                        .padding(bottom = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    SettingsStore.AppDesign.entries.forEach { design ->
-                        DesignOptionCard(
-                            label = design.label,
-                            selected = appDesign == design,
-                            onClick = {
-                                appDesign = design
-                                settingsStore.appDesign = design
-                            },
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            DesignPreview(design = design)
-                        }
-                    }
-                }
-            }
+            InterfaceSettingsSection(appearance = appearance)
 
             SettingsSection(title = "DNS") {
                 SettingsNavRow(
@@ -453,7 +426,7 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun SettingsSection(
+fun SettingsSection(
     title: String,
     content: @Composable () -> Unit,
 ) {
@@ -478,7 +451,7 @@ private fun SettingsSection(
 }
 
 @Composable
-private fun SettingsSwitchRow(
+fun SettingsSwitchRow(
     title: String,
     subtitle: String,
     checked: Boolean,
@@ -561,7 +534,7 @@ private fun SettingsStaticRow(title: String, subtitle: String) {
 }
 
 @Composable
-private fun DesignOptionCard(
+fun DesignOptionCard(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
@@ -600,7 +573,7 @@ private fun DesignOptionCard(
 }
 
 @Composable
-private fun DesignPreview(design: SettingsStore.AppDesign) {
+fun DesignPreview(design: SettingsStore.AppDesign) {
     val cs = MaterialTheme.colorScheme
     when (design) {
         SettingsStore.AppDesign.PIXEL -> {
