@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -50,6 +51,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearWavyProgressIndicator
@@ -83,9 +85,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.vauth.foxyvpn.FoxyVpnApp
+import com.vauth.foxyvpn.data.SettingsStore
 import com.vauth.foxyvpn.data.formatBytesPerSecond
 import com.vauth.foxyvpn.data.model.AccountLiveStats
 import com.vauth.foxyvpn.data.model.ConnectionState
+import com.vauth.foxyvpn.data.model.ProxyCandidate
 import com.vauth.foxyvpn.data.model.VpnAccount
 import com.vauth.foxyvpn.data.model.emojiFlag
 import com.vauth.foxyvpn.ui.theme.LocalFoxyStatusColors
@@ -186,7 +190,87 @@ fun HomeScreen(
             )
         },
     ) { padding ->
-        Column(
+        val design = app.settingsStore.appDesign
+        val data = HomeContentData(
+            state = state,
+            lastError = lastError,
+            multiStats = multiStats,
+            connectedCount = connectedCount,
+            accounts = accounts,
+            selectedProxy = selectedProxy,
+            pingMs = pingMs,
+            elapsedSeconds = elapsedSeconds,
+            detailsOpen = detailsOpen,
+        )
+        val callbacks = HomeCallbacks(
+            onToggle = {
+                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                if (state == ConnectionState.DISCONNECTED) onRequestConnect() else onDisconnect()
+            },
+            onToggleDetails = { detailsOpen = !detailsOpen },
+            onRefreshPing = {
+                val proxy = selectedProxy
+                scope.launch {
+                    pingMs = -1
+                    pingMs = proxy?.let { PingUtil.measureTcpLatencyMs(it.host, it.port) } ?: -2
+                }
+            },
+            onOpenServers = onOpenServers,
+            onOpenAccounts = onOpenAccounts,
+        )
+        when (design) {
+            SettingsStore.AppDesign.PIXEL -> PixelHomeBody(
+                padding = padding,
+                data = data,
+                callbacks = callbacks,
+            )
+            SettingsStore.AppDesign.PORTAL -> PortalHomeBody(
+                padding = padding,
+                data = data,
+                callbacks = callbacks,
+            )
+            SettingsStore.AppDesign.OLD -> OldHomeBody(
+                padding = padding,
+                data = data,
+                callbacks = callbacks,
+            )
+        }
+    }
+}
+
+private data class HomeContentData(
+    val state: ConnectionState,
+    val lastError: String?,
+    val multiStats: List<AccountLiveStats>,
+    val connectedCount: Int,
+    val accounts: List<VpnAccount>,
+    val selectedProxy: ProxyCandidate?,
+    val pingMs: Int,
+    val elapsedSeconds: Int,
+    val detailsOpen: Boolean,
+)
+
+private class HomeCallbacks(
+    val onToggle: () -> Unit,
+    val onToggleDetails: () -> Unit,
+    val onRefreshPing: () -> Unit,
+    val onOpenServers: () -> Unit,
+    val onOpenAccounts: () -> Unit,
+)
+
+@Composable
+private fun PixelHomeBody(
+    padding: PaddingValues,
+    data: HomeContentData,
+    callbacks: HomeCallbacks,
+) {
+    val state = data.state
+    val multiStats = data.multiStats
+    val connectedCount = data.connectedCount
+    val accounts = data.accounts
+    val selectedProxy = data.selectedProxy
+    val pingMs = data.pingMs
+    Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
@@ -199,11 +283,8 @@ fun HomeScreen(
 
             HeroCard(
                 state = state,
-                elapsedSeconds = elapsedSeconds,
-                onToggle = {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    if (state == ConnectionState.DISCONNECTED) onRequestConnect() else onDisconnect()
-                },
+                elapsedSeconds = data.elapsedSeconds,
+                onToggle = callbacks.onToggle,
             )
 
             Spacer(Modifier.height(10.dp))
@@ -216,10 +297,10 @@ fun HomeScreen(
                 pingMs = pingMs,
                 connectedCount = connectedCount,
                 totalAccounts = accounts.size,
-                onOpenDetails = { detailsOpen = !detailsOpen },
+                onOpenDetails = callbacks.onToggleDetails,
             )
 
-            AnimatedVisibility(visible = detailsOpen && state == ConnectionState.CONNECTED) {
+            AnimatedVisibility(visible = data.detailsOpen && state == ConnectionState.CONNECTED) {
                 DetailsPanel(
                     accounts = accounts,
                     stats = multiStats,
@@ -227,17 +308,11 @@ fun HomeScreen(
                     placeLabel = selectedProxy?.let {
                         listOfNotNull(it.countryName.ifBlank { null }, it.host).joinToString(" · ")
                     } ?: "Recommended",
-                    onRefreshPing = {
-                        val proxy = selectedProxy
-                        scope.launch {
-                            pingMs = -1
-                            pingMs = proxy?.let { PingUtil.measureTcpLatencyMs(it.host, it.port) } ?: -2
-                        }
-                    },
+                    onRefreshPing = callbacks.onRefreshPing,
                 )
             }
 
-            val error = lastError
+            val error = data.lastError
             if (error != null && state != ConnectionState.CONNECTING) {
                 Spacer(Modifier.height(10.dp))
                 ErrorCard(error = error)
@@ -249,7 +324,7 @@ fun HomeScreen(
                 flag = selectedProxy?.emojiFlag.orEmpty(),
                 name = selectedProxy?.let { it.countryName.ifBlank { it.countryCode } } ?: "Recommended",
                 detail = selectedProxy?.let { "${it.host}:${it.port}" } ?: "Tap to choose a location",
-                onClick = onOpenServers,
+                onClick = callbacks.onOpenServers,
             )
 
             Spacer(Modifier.height(6.dp))
@@ -258,7 +333,7 @@ fun HomeScreen(
                 accounts = accounts,
                 connectedCount = connectedCount,
                 state = state,
-                onClick = onOpenAccounts,
+                onClick = callbacks.onOpenAccounts,
             )
 
             Spacer(Modifier.height(6.dp))
@@ -267,6 +342,274 @@ fun HomeScreen(
 
             Spacer(Modifier.height(16.dp))
         }
+    }
+}
+
+/**
+ * PORTAL design: an immersive single-column layout. The connect core sits in a
+ * large glowing ring at the center; connection facts live in one unified card
+ * below it instead of chips + hero card.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun PortalHomeBody(
+    padding: PaddingValues,
+    data: HomeContentData,
+    callbacks: HomeCallbacks,
+) {
+    val cs = MaterialTheme.colorScheme
+    val state = data.state
+    val live = state == ConnectionState.CONNECTED
+    val busy = state == ConnectionState.CONNECTING
+    val selectedProxy = data.selectedProxy
+
+    val ring by animateColorAsState(
+        targetValue = when {
+            live -> cs.primary
+            busy -> cs.tertiary
+            else -> cs.surfaceContainerHighest
+        },
+        animationSpec = tween(500),
+        label = "portal-ring",
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(padding)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp)
+            .widthIn(max = 560.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Spacer(Modifier.height(12.dp))
+        Text(
+            text = when (state) {
+                ConnectionState.CONNECTED -> "Connected"
+                ConnectionState.CONNECTING -> "Connecting…"
+                ConnectionState.DISCONNECTED -> "Disconnected"
+            },
+            style = MaterialTheme.typography.headlineSmallEmphasized,
+            color = if (live) cs.primary else cs.onSurface,
+        )
+        if (live) {
+            Text(
+                text = formatElapsed(data.elapsedSeconds),
+                style = MaterialTheme.typography.titleMedium,
+                color = cs.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+        Spacer(Modifier.height(20.dp))
+
+        // Portal ring around the connect core.
+        Box(contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier
+                    .size(232.dp)
+                    .clip(CircleShape)
+                    .background(ring.copy(alpha = 0.16f)),
+            )
+            Box(
+                modifier = Modifier
+                    .size(204.dp)
+                    .clip(CircleShape)
+                    .background(ring.copy(alpha = 0.22f)),
+            )
+            ConnectCore(
+                state = state,
+                elapsedSeconds = data.elapsedSeconds,
+                onToggle = callbacks.onToggle,
+            )
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        // Unified info card.
+        Surface(
+            shape = RoundedCornerShape(28.dp),
+            color = cs.surfaceContainer,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(Modifier.padding(vertical = 8.dp)) {
+                PortalInfoRow(
+                    label = "Location",
+                    value = selectedProxy?.let { it.countryName.ifBlank { it.countryCode } } ?: "Recommended",
+                    flag = selectedProxy?.emojiFlag.orEmpty(),
+                )
+                HorizontalDivider(Modifier.padding(horizontal = 20.dp), color = cs.outlineVariant.copy(alpha = 0.5f))
+                PortalInfoRow(
+                    label = "Ping",
+                    value = when {
+                        data.pingMs < 0 -> "—"
+                        else -> "${data.pingMs} ms"
+                    },
+                    flag = "",
+                )
+                HorizontalDivider(Modifier.padding(horizontal = 20.dp), color = cs.outlineVariant.copy(alpha = 0.5f))
+                PortalInfoRow(
+                    label = "Accounts",
+                    value = "${data.connectedCount}/${data.accounts.size} active",
+                    flag = "",
+                )
+            }
+        }
+
+        val error = data.lastError
+        if (error != null && state != ConnectionState.CONNECTING) {
+            Spacer(Modifier.height(10.dp))
+            ErrorCard(error = error)
+        }
+
+        Spacer(Modifier.height(10.dp))
+        ServerRow(
+            flag = selectedProxy?.emojiFlag.orEmpty(),
+            name = selectedProxy?.let { it.countryName.ifBlank { it.countryCode } } ?: "Recommended",
+            detail = selectedProxy?.let { "${it.host}:${it.port}" } ?: "Tap to choose a location",
+            onClick = callbacks.onOpenServers,
+        )
+        Spacer(Modifier.height(6.dp))
+        AccountsRow(
+            accounts = data.accounts,
+            connectedCount = data.connectedCount,
+            state = state,
+            onClick = callbacks.onOpenAccounts,
+        )
+        Spacer(Modifier.height(6.dp))
+        SpeedRow(stats = data.multiStats, live = live)
+        Spacer(Modifier.height(16.dp))
+    }
+}
+
+@Composable
+private fun PortalInfoRow(label: String, value: String, flag: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        if (flag.isNotBlank()) {
+            Text(text = flag, modifier = Modifier.padding(end = 6.dp))
+        }
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleSmallEmphasized,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+/**
+ * CLASSIC design: the traditional VPN-app layout. Big round button, status
+ * line, and plain divided rows — no cards, no chips.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun OldHomeBody(
+    padding: PaddingValues,
+    data: HomeContentData,
+    callbacks: HomeCallbacks,
+) {
+    val cs = MaterialTheme.colorScheme
+    val state = data.state
+    val live = state == ConnectionState.CONNECTED
+    val selectedProxy = data.selectedProxy
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(padding)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp)
+            .widthIn(max = 560.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Spacer(Modifier.height(24.dp))
+        Text(
+            text = when (state) {
+                ConnectionState.CONNECTED -> "VPN is ON"
+                ConnectionState.CONNECTING -> "Connecting…"
+                ConnectionState.DISCONNECTED -> "VPN is OFF"
+            },
+            style = MaterialTheme.typography.headlineMedium,
+            color = if (live) cs.primary else cs.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(16.dp))
+        ConnectCore(
+            state = state,
+            elapsedSeconds = data.elapsedSeconds,
+            onToggle = callbacks.onToggle,
+        )
+        if (live) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "Connected for ${formatElapsed(data.elapsedSeconds)}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = cs.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.height(24.dp))
+
+        val error = data.lastError
+        if (error != null && state != ConnectionState.CONNECTING) {
+            ErrorCard(error = error)
+            Spacer(Modifier.height(12.dp))
+        }
+
+        ClassicRow(
+            title = "Server",
+            subtitle = selectedProxy?.let {
+                "${it.countryName.ifBlank { it.countryCode }} · ${it.host}:${it.port}"
+            } ?: "Recommended — tap to choose",
+            onClick = callbacks.onOpenServers,
+        )
+        HorizontalDivider(color = cs.outlineVariant.copy(alpha = 0.6f))
+        ClassicRow(
+            title = "Accounts",
+            subtitle = "${data.connectedCount} of ${data.accounts.size} connected",
+            onClick = callbacks.onOpenAccounts,
+        )
+        HorizontalDivider(color = cs.outlineVariant.copy(alpha = 0.6f))
+        ClassicRow(
+            title = "Speed",
+            subtitle = if (live) "Live" else "Idle",
+            onClick = {},
+        )
+        Spacer(Modifier.height(16.dp))
+    }
+}
+
+@Composable
+private fun ClassicRow(title: String, subtitle: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(text = title, style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
