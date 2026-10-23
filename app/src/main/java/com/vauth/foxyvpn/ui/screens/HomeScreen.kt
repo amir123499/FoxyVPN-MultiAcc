@@ -6,6 +6,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -1037,7 +1038,6 @@ private fun AccountsRow(
     }
 }
 
-@Composable
 /**
  * v1.3 lag fix: collects pool stats locally so the 2-second stats tick
  * recomposes ONLY this row, never the whole home screen.
