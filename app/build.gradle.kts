@@ -70,7 +70,9 @@ android {
     }
 
     signingConfigs {
-        create("debug") {
+        // Use a committed debug keystore so every CI build has a stable
+        // signature (debug keys are not sensitive).
+        getByName("debug") {
             storeFile = file("debug.keystore")
             storePassword = "android"
             keyAlias = "androiddebugkey"
