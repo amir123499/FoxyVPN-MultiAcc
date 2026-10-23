@@ -4,8 +4,11 @@ import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.net.Uri
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,8 +16,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -53,6 +58,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
@@ -90,6 +96,8 @@ fun SettingsScreen(
     var upstreamProxyUsername by remember { mutableStateOf(settingsStore.upstreamProxyUsername) }
     var upstreamProxyPassword by remember { mutableStateOf(settingsStore.upstreamProxyPassword) }
     var excludedApps by remember { mutableStateOf(settingsStore.excludedApps) }
+    var appDesign by remember { mutableStateOf(settingsStore.appDesign) }
+    var blockAds by remember { mutableStateOf(settingsStore.dnsProvider == SettingsStore.DnsProvider.ADGUARD) }
     var showDnsProviderDialog by remember { mutableStateOf(false) }
     var showBootstrapDnsDialog by remember { mutableStateOf(false) }
     var showSocksBindDialog by remember { mutableStateOf(false) }
@@ -259,6 +267,35 @@ fun SettingsScreen(
                 )
             }
 
+            SettingsSection(title = "Appearance") {
+                Text(
+                    text = "Home screen design",
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp)
+                        .padding(bottom = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    SettingsStore.AppDesign.entries.forEach { design ->
+                        DesignOptionCard(
+                            label = design.label,
+                            selected = appDesign == design,
+                            onClick = {
+                                appDesign = design
+                                settingsStore.appDesign = design
+                            },
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            DesignPreview(design = design)
+                        }
+                    }
+                }
+            }
+
             SettingsSection(title = "DNS") {
                 SettingsNavRow(
                     title = "Tunnel DNS",
@@ -277,6 +314,18 @@ fun SettingsScreen(
                         else -> bootstrapDnsProvider.label
                     },
                     onClick = { showBootstrapDnsDialog = true },
+                )
+                SettingsSwitchRow(
+                    title = "Block ads",
+                    subtitle = "Use AdGuard DNS inside the tunnel to block ads and trackers",
+                    checked = blockAds,
+                    onCheckedChange = {
+                        blockAds = it
+                        val provider = if (it) SettingsStore.DnsProvider.ADGUARD
+                        else SettingsStore.DnsProvider.SYSTEM_DEFAULT
+                        dnsProvider = provider
+                        settingsStore.dnsProvider = provider
+                    },
                 )
             }
 
@@ -507,6 +556,133 @@ private fun SettingsStaticRow(title: String, subtitle: String) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+    }
+}
+
+@Composable
+private fun DesignOptionCard(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    preview: @Composable () -> Unit,
+) {
+    val cs = MaterialTheme.colorScheme
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(20.dp),
+        color = if (selected) cs.primaryContainer else cs.surfaceContainerHigh,
+        border = if (selected) BorderStroke(2.dp, cs.primary) else null,
+        modifier = modifier,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(vertical = 10.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(width = 72.dp, height = 88.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(cs.surface),
+                contentAlignment = Alignment.Center,
+            ) {
+                preview()
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                color = if (selected) cs.onPrimaryContainer else cs.onSurface,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DesignPreview(design: SettingsStore.AppDesign) {
+    val cs = MaterialTheme.colorScheme
+    when (design) {
+        SettingsStore.AppDesign.PIXEL -> {
+            // Mini hero card with central dot.
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.padding(6.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 52.dp, height = 30.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(cs.primaryContainer),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(14.dp)
+                            .clip(CircleShape)
+                            .background(cs.primary),
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .size(width = 52.dp, height = 8.dp)
+                        .clip(CircleShape)
+                        .background(cs.surfaceContainerHighest),
+                )
+                Box(
+                    modifier = Modifier
+                        .size(width = 40.dp, height = 8.dp)
+                        .clip(CircleShape)
+                        .background(cs.surfaceContainerHighest),
+                )
+            }
+        }
+        SettingsStore.AppDesign.PORTAL -> {
+            // Mini portal: concentric rings.
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(6.dp)) {
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .clip(CircleShape)
+                        .background(cs.primary.copy(alpha = 0.18f)),
+                )
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(cs.primary.copy(alpha = 0.30f)),
+                )
+                Box(
+                    modifier = Modifier
+                        .size(20.dp)
+                        .clip(CircleShape)
+                        .background(cs.primary),
+                )
+            }
+        }
+        SettingsStore.AppDesign.OLD -> {
+            // Mini classic list.
+            Column(
+                verticalArrangement = Arrangement.spacedBy(5.dp),
+                modifier = Modifier.padding(8.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(20.dp)
+                        .clip(CircleShape)
+                        .background(cs.primary)
+                        .align(Alignment.CenterHorizontally),
+                )
+                repeat(3) {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 52.dp, height = 8.dp)
+                            .clip(CircleShape)
+                            .background(cs.surfaceContainerHighest),
+                    )
+                }
+            }
         }
     }
 }
