@@ -66,6 +66,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.vauth.foxyvpn.BuildConfig
 import com.vauth.foxyvpn.data.SettingsStore
+import com.vauth.foxyvpn.ui.theme.AppearanceController
 
 private const val GITHUB_URL = "https://github.com/vauth/foxyvpn"
 
