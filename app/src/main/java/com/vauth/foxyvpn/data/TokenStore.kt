@@ -4,8 +4,15 @@ import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.vauth.foxyvpn.data.model.RuntimeAuth
+import com.vauth.foxyvpn.data.model.VpnAccount
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json
 
 private const val TAG = "TokenStore"
+
+private val accountsJson = Json { ignoreUnknownKeys = true }
 
 class TokenStore(context: Context) {
 
@@ -51,12 +58,92 @@ class TokenStore(context: Context) {
 
     fun clear() {
         prefs.edit().clear().apply()
+        _accountsFlow.value = emptyList()
+    }
+
+    // ------------------------------------------------------------------
+    // Multi-account storage. Accounts live in the same encrypted prefs
+    // ("foxyvpn_tokens") as the legacy single session, serialized as JSON.
+    // ------------------------------------------------------------------
+
+    private val _accountsFlow = MutableStateFlow(loadAccounts())
+    val accountsFlow: StateFlow<List<VpnAccount>> = _accountsFlow
+
+    fun getAccounts(): List<VpnAccount> = _accountsFlow.value
+
+    fun getEnabledAccounts(): List<VpnAccount> = _accountsFlow.value.filter { it.isEnabled }
+
+    fun hasAnyAccount(): Boolean = _accountsFlow.value.isNotEmpty()
+
+    fun saveAccounts(accounts: List<VpnAccount>) {
+        val encoded = runCatching {
+            accountsJson.encodeToString(ListSerializer(VpnAccount.serializer()), accounts)
+        }.getOrElse {
+            AppLogger.w(TAG, "could not encode the account list", it)
+            return
+        }
+        prefs.edit().putString(KEY_ACCOUNTS_JSON, encoded).apply()
+        _accountsFlow.value = accounts
+    }
+
+    fun addAccount(account: VpnAccount) {
+        val current = _accountsFlow.value.toMutableList()
+        current.removeAll { it.id == account.id || it.email.equals(account.email, ignoreCase = true) }
+        current.add(account)
+        saveAccounts(current)
+    }
+
+    fun addAccounts(accounts: List<VpnAccount>) {
+        if (accounts.isEmpty()) return
+        val current = _accountsFlow.value.toMutableList()
+        for (account in accounts) {
+            current.removeAll { it.id == account.id || it.email.equals(account.email, ignoreCase = true) }
+            current.add(account)
+        }
+        saveAccounts(current)
+    }
+
+    fun removeAccount(id: String) {
+        saveAccounts(_accountsFlow.value.filterNot { it.id == id })
+    }
+
+    fun toggleAccount(id: String, enabled: Boolean) {
+        saveAccounts(_accountsFlow.value.map { if (it.id == id) it.copy(isEnabled = enabled) else it })
+    }
+
+    fun updateAccount(account: VpnAccount) {
+        saveAccounts(_accountsFlow.value.map { if (it.id == account.id) account else it })
+    }
+
+    private fun loadAccounts(): List<VpnAccount> {
+        val raw = prefs.getString(KEY_ACCOUNTS_JSON, null) ?: return emptyList()
+        return runCatching {
+            accountsJson.decodeFromString(ListSerializer(VpnAccount.serializer()), raw)
+        }.onFailure {
+            AppLogger.w(TAG, "could not decode the stored account list", it)
+        }.getOrDefault(emptyList())
+    }
+
+    /**
+     * First-run migration: wraps the legacy single session (if any) into the
+     * account list as "Primary Account" so existing installs keep working.
+     */
+    fun migrateLegacySessionIfPresent(): VpnAccount? {
+        if (hasAnyAccount()) return null
+        val legacy = loadAuth() ?: return null
+        val primary = VpnAccount(
+            email = "Primary Account",
+            auth = legacy,
+        )
+        saveAccounts(listOf(primary))
+        return primary
     }
 
     companion object {
         private const val KEY_ACCESS_TOKEN = "access_token"
         private const val KEY_REFRESH_TOKEN = "refresh_token"
         private const val KEY_EXPIRES_AT = "expires_at"
+        private const val KEY_ACCOUNTS_JSON = "accounts_json_v1"
 
         private const val CLOCK_SKEW_TOLERANCE_SECONDS = 60L
     }
