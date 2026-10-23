@@ -385,7 +385,7 @@ private fun HeroCard(
     val state = data.state
     val live = state == ConnectionState.CONNECTED
     val busy = state == ConnectionState.CONNECTING
-    // 1:1 from ZedSecure PixelHeroCard: slowEffectsSpec colors, 44.dp card.
+    // Card colours animate with Material 3 slow-effects motion; 44.dp corners.
     val effects = MaterialTheme.motionScheme.slowEffectsSpec<Color>()
     val container by animateColorAsState(
         if (live) cs.primaryContainer else cs.surfaceContainer,
@@ -417,7 +417,7 @@ private fun HeroCard(
         ) {
             HomeConnectCore(data = data, callbacks = callbacks)
             Spacer(Modifier.height(16.dp))
-            // 1:1: fadeIn(280) + slideInVertically(rise){it/3} togetherWith fadeOut(160).
+            // Crossfade with a short upward slide when the content changes.
             AnimatedContent(
                 targetState = state,
                 transitionSpec = {
@@ -438,7 +438,7 @@ private fun HeroCard(
             }
             if (busy) {
                 Spacer(Modifier.height(10.dp))
-                // 1:1: LinearWavyProgressIndicator, 156.dp.
+                // Wavy linear progress indicator, 156.dp wide.
                 LinearWavyProgressIndicator(
                     modifier = Modifier.width(156.dp),
                     color = cs.primary,
