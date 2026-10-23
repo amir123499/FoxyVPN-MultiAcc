@@ -70,6 +70,7 @@ import com.vauth.foxyvpn.data.formatBytesPerSecond
 import com.vauth.foxyvpn.data.model.AccountLiveStats
 import com.vauth.foxyvpn.data.model.BatchImportItemResult
 import com.vauth.foxyvpn.data.model.VpnAccount
+import com.vauth.foxyvpn.ui.theme.AppearanceController
 import com.vauth.foxyvpn.vpn.FoxyVpnService
 import kotlinx.coroutines.launch
 
@@ -78,17 +79,24 @@ import kotlinx.coroutines.launch
 fun AccountScreen(
     authRepository: FxaAuthRepository,
     tokenStore: TokenStore,
+    appearance: AppearanceController,
     onBack: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val accounts by tokenStore.accountsFlow.collectAsState()
     val liveStats by FoxyVpnService.multiAccountStats.collectAsState()
+    val usage by tokenStore.usageFlow.collectAsState()
     val statsById = remember(liveStats) { liveStats.associateBy { it.accountId } }
 
     var showImportSheet by remember { mutableStateOf(false) }
     var showLoginDialog by remember { mutableStateOf(false) }
     var refreshingQuotas by remember { mutableStateOf(false) }
     var banner by remember { mutableStateOf<String?>(null) }
+    var pendingDelete by remember { mutableStateOf<VpnAccount?>(null) }
+
+    fun doDelete(account: VpnAccount) {
+        tokenStore.removeAccount(account.id)
+    }
 
     fun refreshQuotas() {
         refreshingQuotas = true
@@ -111,6 +119,8 @@ fun AccountScreen(
                             lastError = null,
                         ),
                     )
+                    // Server quota is authoritative — drop locally counted usage.
+                    tokenStore.resetUsedBytes(account.id)
                     ok++
                 } else {
                     tokenStore.updateAccount(account.copy(lastError = "Quota refresh failed"))
@@ -196,14 +206,38 @@ fun AccountScreen(
                         AccountCard(
                             account = account,
                             stats = statsById[account.id],
+                            usedBytes = usage[account.id] ?: 0L,
+                            corner = appearance.personalization.cornerStyle.cardDp.dp,
                             onToggle = { tokenStore.toggleAccount(account.id, !account.isEnabled) },
-                            onDelete = { tokenStore.removeAccount(account.id) },
+                            onDelete = {
+                                if (appearance.confirmRemove) pendingDelete = account
+                                else doDelete(account)
+                            },
                         )
                     }
                     item { Spacer(Modifier.height(16.dp)) }
                 }
             }
         }
+    }
+
+    pendingDelete?.let { account ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("Remove account?") },
+            text = { Text("Remove ${account.email.ifBlank { "this account" }} from the app?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        doDelete(account)
+                        pendingDelete = null
+                    },
+                ) { Text("Remove", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text("Cancel") }
+            },
+        )
     }
 
     if (showImportSheet) {
@@ -259,6 +293,8 @@ private fun EmptyAccountsHint() {
 private fun AccountCard(
     account: VpnAccount,
     stats: AccountLiveStats?,
+    usedBytes: Long,
+    corner: androidx.compose.ui.unit.Dp,
     onToggle: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -272,7 +308,7 @@ private fun AccountCard(
     val dot by animateColorAsState(dotTarget, tween(300), label = "card-dot")
 
     Surface(
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(corner),
         color = cs.surfaceContainerHigh,
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -303,25 +339,33 @@ private fun AccountCard(
                 }
             }
 
-            // Quota bar.
-            val remaining = account.quotaRemaining
-            if (remaining != null) {
-                Spacer(Modifier.height(8.dp))
-                val fraction = (remaining.toFloat() / account.quotaMax.toFloat()).coerceIn(0f, 1f)
-                LinearProgressIndicator(
-                    progress = { fraction },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(8.dp)
-                        .clip(RoundedCornerShape(4.dp)),
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "${formatBytes(remaining)} left of ${formatBytes(account.quotaMax)}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = cs.onSurfaceVariant,
-                )
-            }
+            // Quota bar — always visible (Bug 2). Server-reported remaining
+            // when known, otherwise estimated from this device's usage.
+            Spacer(Modifier.height(8.dp))
+            val base = account.quotaRemaining ?: account.quotaMax
+            val remaining = (base - usedBytes).coerceAtLeast(0L)
+            val fraction = (remaining.toFloat() / account.quotaMax.toFloat()).coerceIn(0f, 1f)
+            LinearProgressIndicator(
+                progress = { fraction },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(8.dp)
+                    .clip(RoundedCornerShape(4.dp)),
+                color = when {
+                    fraction <= 0.1f -> cs.error
+                    fraction <= 0.25f -> cs.tertiary
+                    else -> cs.primary
+                },
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                buildString {
+                    append("${formatBytes(remaining)} left of ${formatBytes(account.quotaMax)}")
+                    if (account.quotaRemaining == null) append(" · on this device")
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = cs.onSurfaceVariant,
+            )
 
             // Live per-account stats.
             if (stats != null && account.isEnabled) {
