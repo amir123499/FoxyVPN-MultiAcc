@@ -49,8 +49,7 @@ class SettingsStore(context: Context) {
         set(value) { prefs.edit().putString(KEY_APP_DESIGN, value.name).apply() }
 
     // ------------------------------------------------------------------
-    // Interface / appearance settings (ported from ZedSecure's Ui page).
-    // Defaults match ZedSecure's defaults.
+    // Interface / appearance settings (see AppearanceSettings.kt).
     // ------------------------------------------------------------------
 
     var colorStyle: ColorStyle
@@ -64,7 +63,7 @@ class SettingsStore(context: Context) {
         set(value) { prefs.edit().putBoolean(KEY_DYNAMIC_COLOR, value).apply() }
 
     var accentColorIndex: Int
-        get() = prefs.getInt(KEY_ACCENT_COLOR_INDEX, 0)
+        get() = prefs.getInt(KEY_ACCENT_COLOR_INDEX, DEFAULT_ACCENT_INDEX)
         set(value) { prefs.edit().putInt(KEY_ACCENT_COLOR_INDEX, value).apply() }
 
     var colorContrast: ColorContrast
@@ -369,6 +368,8 @@ class SettingsStore(context: Context) {
         private const val KEY_COLOR_STYLE = "color_style"
         private const val KEY_DYNAMIC_COLOR = "dynamic_color"
         private const val KEY_ACCENT_COLOR_INDEX = "accent_color_index"
+        /** Signal blue (see AccentPresets). Existing stored choices are unaffected. */
+        const val DEFAULT_ACCENT_INDEX = 10
         private const val KEY_COLOR_CONTRAST = "color_contrast"
         private const val KEY_REDUCE_MOTION = "reduce_motion"
         private const val KEY_UI_FONT_SCALE = "ui_font_scale"
