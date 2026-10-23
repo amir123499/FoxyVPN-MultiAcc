@@ -15,6 +15,8 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import com.vauth.foxyvpn.ui.screens.LocalMotionBudget
+import com.vauth.foxyvpn.ui.screens.MotionBudget
 
 private val LightColors = lightColorScheme(
     primary = px_light_primary,
@@ -178,6 +180,7 @@ fun FoxyVpnTheme(
     }
 
     CompositionLocalProvider(
+        LocalMotionBudget provides MotionBudget.Full,
         LocalFoxyStatusColors provides when {
             amoled -> AmoledStatusColors
             darkTheme -> DarkStatusColors
