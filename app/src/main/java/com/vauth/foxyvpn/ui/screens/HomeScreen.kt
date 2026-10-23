@@ -351,6 +351,7 @@ private fun HeroCard(
  * The morphing connect core: a canvas-drawn blob that morphs between a
  * circle (idle) and a soft burst (connected), rotating slowly while active.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ConnectCore(
     state: ConnectionState,
