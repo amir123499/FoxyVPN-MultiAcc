@@ -3,7 +3,7 @@
 # FoxyVPN-MultiAcc
 
 > Multi-account mod of [Vauth/FoxyVPN](https://github.com/Vauth/FoxyVPN) (v1.0.6, MIT) with a rebuilt
-> Pixel-style UI. Created by **amirhossein asgari & muse**. Original work © 2026 Vauth — see LICENSE.
+> Pixel-style UI. Created by **muse**. Original work © 2026 Vauth — see LICENSE.
 
 # FoxyVPN - Unofficial Firefox VPN client
 
