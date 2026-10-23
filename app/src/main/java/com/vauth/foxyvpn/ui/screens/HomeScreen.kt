@@ -158,7 +158,7 @@ fun HomeScreen(
                                 ThemeMode.AMOLED -> ThemeMode.LIGHT
                                 ThemeMode.SYSTEM -> ThemeMode.DARK
                             }
-                            appearance.setThemeMode(next)
+                            appearance.updateThemeMode(next)
                         },
                     ) {
                         Icon(
