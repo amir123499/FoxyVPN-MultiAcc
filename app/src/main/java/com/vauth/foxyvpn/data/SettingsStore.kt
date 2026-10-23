@@ -33,6 +33,12 @@ class SettingsStore(context: Context) {
             QuickConnectWidgetProvider.updateAll(appContext, FoxyVpnService.state.value)
         }
 
+    var appDesign: AppDesign
+        get() = AppDesign.entries.firstOrNull {
+            it.name == prefs.getString(KEY_APP_DESIGN, null)
+        } ?: AppDesign.PIXEL
+        set(value) { prefs.edit().putString(KEY_APP_DESIGN, value.name).apply() }
+
     var exitCheckEnabled: Boolean
         get() = prefs.getBoolean(KEY_EXIT_CHECK, true)
         set(value) { prefs.edit().putBoolean(KEY_EXIT_CHECK, value).apply() }
@@ -150,6 +156,12 @@ class SettingsStore(context: Context) {
 
     enum class UpstreamProxyType { SOCKS5, HTTP }
 
+    enum class AppDesign(val label: String) {
+        PIXEL(label = "Pixel"),
+        PORTAL(label = "Portal"),
+        OLD(label = "Classic"),
+    }
+
     enum class DnsProvider(
         val label: String,
         val dohUrl: String?,
@@ -221,6 +233,7 @@ class SettingsStore(context: Context) {
 
     companion object {
         private const val KEY_THEME_MODE = "theme_mode"
+        private const val KEY_APP_DESIGN = "app_design"
         private const val KEY_EXIT_CHECK = "exit_check_enabled"
         private const val KEY_SOCKS_BIND_ADDRESS = "socks_bind_address"
         private const val KEY_SOCKS_PORT = "socks_port"
