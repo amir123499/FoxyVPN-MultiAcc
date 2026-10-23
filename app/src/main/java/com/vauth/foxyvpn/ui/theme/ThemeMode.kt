@@ -11,6 +11,7 @@ enum class ThemeMode {
     SYSTEM,
     LIGHT,
     DARK,
+    AMOLED,
 }
 
 class ThemeController(private val settingsStore: SettingsStore) {
@@ -22,7 +23,10 @@ class ThemeController(private val settingsStore: SettingsStore) {
         ThemeMode.SYSTEM -> systemInDarkTheme
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
+        ThemeMode.AMOLED -> true
     }
+
+    fun isAmoled(): Boolean = mode == ThemeMode.AMOLED
 
     fun set(next: ThemeMode) {
         if (next == mode) return
@@ -31,7 +35,15 @@ class ThemeController(private val settingsStore: SettingsStore) {
     }
 
     fun toggle(systemInDarkTheme: Boolean) {
-        set(if (resolveDark(systemInDarkTheme)) ThemeMode.LIGHT else ThemeMode.DARK)
+        // Cycles: light -> dark -> amoled -> light (or system -> dark first).
+        set(
+            when (mode) {
+                ThemeMode.LIGHT -> ThemeMode.DARK
+                ThemeMode.DARK -> ThemeMode.AMOLED
+                ThemeMode.AMOLED -> ThemeMode.LIGHT
+                ThemeMode.SYSTEM -> if (resolveDark(systemInDarkTheme)) ThemeMode.LIGHT else ThemeMode.DARK
+            },
+        )
     }
 }
 
