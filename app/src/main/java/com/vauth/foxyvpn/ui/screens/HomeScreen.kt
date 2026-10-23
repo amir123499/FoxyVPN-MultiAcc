@@ -3,21 +3,12 @@ package com.vauth.foxyvpn.ui.screens
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,7 +36,6 @@ import androidx.compose.material.icons.filled.Contrast
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.LightMode
-import androidx.compose.material.icons.filled.Power
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -72,17 +62,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.vauth.foxyvpn.FoxyVpnApp
 import com.vauth.foxyvpn.data.SettingsStore
@@ -92,8 +78,11 @@ import com.vauth.foxyvpn.data.model.ConnectionState
 import com.vauth.foxyvpn.data.model.ProxyCandidate
 import com.vauth.foxyvpn.data.model.VpnAccount
 import com.vauth.foxyvpn.data.model.emojiFlag
+import com.vauth.foxyvpn.ui.theme.AppearanceController
+import com.vauth.foxyvpn.ui.theme.CardCornerStyle
+import com.vauth.foxyvpn.ui.theme.ListDensity
 import com.vauth.foxyvpn.ui.theme.LocalFoxyStatusColors
-import com.vauth.foxyvpn.ui.theme.ThemeController
+import com.vauth.foxyvpn.ui.theme.Personalization
 import com.vauth.foxyvpn.ui.theme.ThemeMode
 import com.vauth.foxyvpn.vpn.FoxyVpnService
 import com.vauth.foxyvpn.vpn.PingUtil
@@ -103,7 +92,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun HomeScreen(
     app: FoxyVpnApp,
-    themeController: ThemeController,
+    appearance: AppearanceController,
     onRequestConnect: () -> Unit,
     onDisconnect: () -> Unit,
     onOpenServers: () -> Unit,
@@ -118,12 +107,10 @@ fun HomeScreen(
     val selectedProxy by app.proxyStateStore.selectedProxyFlow.collectAsState()
 
     val haptics = LocalHapticFeedback.current
-    val systemDark = isSystemInDarkTheme()
     var detailsOpen by remember { mutableStateOf(false) }
     var pingMs by remember { mutableIntStateOf(-1) }
     val scope = rememberCoroutineScope()
 
-    // Measure edge latency on demand when the details panel opens.
     LaunchedEffect(detailsOpen, state) {
         if (detailsOpen && state == ConnectionState.CONNECTED) {
             val proxy = selectedProxy
@@ -134,7 +121,6 @@ fun HomeScreen(
         }
     }
 
-    // Elapsed-time clock while connected.
     var connectedSince by remember { mutableStateOf(0L) }
     var elapsedSeconds by remember { mutableIntStateOf(0) }
     LaunchedEffect(state) {
@@ -149,33 +135,40 @@ fun HomeScreen(
         }
     }
 
+    fun navigate(dest: FoxyDestination) {
+        when (dest) {
+            FoxyDestination.Home -> Unit
+            FoxyDestination.Locations -> onOpenServers()
+            FoxyDestination.Accounts -> onOpenAccounts()
+            FoxyDestination.Settings -> onOpenSettings()
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("FoxyVPN", style = MaterialTheme.typography.titleLargeEmphasized) },
                 actions = {
-                    IconButton(onClick = onOpenAccounts) {
-                        Icon(
-                            imageVector = Icons.Filled.AccountCircle,
-                            contentDescription = "Accounts",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    val mode = themeController.mode
                     IconButton(
                         onClick = {
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            themeController.toggle(systemDark)
+                            val next = when (appearance.themeMode) {
+                                ThemeMode.LIGHT -> ThemeMode.DARK
+                                ThemeMode.DARK -> ThemeMode.AMOLED
+                                ThemeMode.AMOLED -> ThemeMode.LIGHT
+                                ThemeMode.SYSTEM -> ThemeMode.DARK
+                            }
+                            appearance.setThemeMode(next)
                         },
                     ) {
                         Icon(
-                            imageVector = when (mode) {
+                            imageVector = when (appearance.themeMode) {
                                 ThemeMode.SYSTEM -> Icons.Filled.BrightnessAuto
                                 ThemeMode.LIGHT -> Icons.Filled.LightMode
                                 ThemeMode.DARK -> Icons.Filled.DarkMode
                                 ThemeMode.AMOLED -> Icons.Filled.Contrast
                             },
-                            contentDescription = "Theme: $mode (tap to cycle)",
+                            contentDescription = "Theme (tap to cycle)",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -189,8 +182,14 @@ fun HomeScreen(
                 },
             )
         },
+        bottomBar = {
+            FoxyBottomBar(
+                style = appearance.navBarStyle,
+                current = FoxyDestination.Home,
+                onNavigate = ::navigate,
+            )
+        },
     ) { padding ->
-        val design = app.settingsStore.appDesign
         val data = HomeContentData(
             state = state,
             lastError = lastError,
@@ -201,10 +200,10 @@ fun HomeScreen(
             pingMs = pingMs,
             elapsedSeconds = elapsedSeconds,
             detailsOpen = detailsOpen,
+            appearance = appearance,
         )
         val callbacks = HomeCallbacks(
             onToggle = {
-                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                 if (state == ConnectionState.DISCONNECTED) onRequestConnect() else onDisconnect()
             },
             onToggleDetails = { detailsOpen = !detailsOpen },
@@ -218,22 +217,10 @@ fun HomeScreen(
             onOpenServers = onOpenServers,
             onOpenAccounts = onOpenAccounts,
         )
-        when (design) {
-            SettingsStore.AppDesign.PIXEL -> PixelHomeBody(
-                padding = padding,
-                data = data,
-                callbacks = callbacks,
-            )
-            SettingsStore.AppDesign.PORTAL -> PortalHomeBody(
-                padding = padding,
-                data = data,
-                callbacks = callbacks,
-            )
-            SettingsStore.AppDesign.OLD -> OldHomeBody(
-                padding = padding,
-                data = data,
-                callbacks = callbacks,
-            )
+        when (appearance.appDesign) {
+            SettingsStore.AppDesign.PIXEL -> PixelHomeBody(padding, data, callbacks)
+            SettingsStore.AppDesign.PORTAL -> PortalHomeBody(padding, data, callbacks)
+            SettingsStore.AppDesign.OLD -> OldHomeBody(padding, data, callbacks)
         }
     }
 }
@@ -248,6 +235,7 @@ private data class HomeContentData(
     val pingMs: Int,
     val elapsedSeconds: Int,
     val detailsOpen: Boolean,
+    val appearance: AppearanceController,
 )
 
 private class HomeCallbacks(
@@ -258,6 +246,28 @@ private class HomeCallbacks(
     val onOpenAccounts: () -> Unit,
 )
 
+private val HomeContentData.corner: Dp
+    get() = appearance.personalization.cornerStyle.cardDp.dp
+
+private val HomeContentData.compact: Boolean
+    get() = appearance.personalization.density == ListDensity.Compact
+
+private fun HomeContentData.cardShape() = RoundedCornerShape(corner)
+
+@Composable
+private fun HomeConnectCore(data: HomeContentData, callbacks: HomeCallbacks) {
+    val a = data.appearance
+    ConnectCore(
+        state = data.state,
+        style = a.connectButtonStyle,
+        reduceMotion = a.reduceMotion,
+        connectColor = a.personalization.connectColor,
+        connectedColor = a.personalization.connectedColor,
+        elapsedText = formatElapsed(data.elapsedSeconds),
+        onToggle = callbacks.onToggle,
+    )
+}
+
 @Composable
 private fun PixelHomeBody(
     padding: PaddingValues,
@@ -265,91 +275,165 @@ private fun PixelHomeBody(
     callbacks: HomeCallbacks,
 ) {
     val state = data.state
-    val multiStats = data.multiStats
-    val connectedCount = data.connectedCount
-    val accounts = data.accounts
-    val selectedProxy = data.selectedProxy
-    val pingMs = data.pingMs
+    val vGap = if (data.compact) 6.dp else 10.dp
     Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(padding)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp)
+            .widthIn(max = 560.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Spacer(Modifier.height(8.dp))
+
+        HeroCard(data = data, callbacks = callbacks)
+
+        Spacer(Modifier.height(vGap))
+
+        FactChipsRow(
+            state = state,
+            placeLabel = data.selectedProxy?.let { it.countryName.ifBlank { it.countryCode } } ?: "Recommended",
+            flag = data.selectedProxy?.emojiFlag.orEmpty(),
+            pingMs = data.pingMs,
+            connectedCount = data.connectedCount,
+            totalAccounts = data.accounts.size,
+            onOpenDetails = callbacks.onToggleDetails,
+        )
+
+        AnimatedVisibility(visible = data.detailsOpen && state == ConnectionState.CONNECTED) {
+            DetailsPanel(
+                accounts = data.accounts,
+                stats = data.multiStats,
+                pingMs = data.pingMs,
+                personalization = data.appearance.personalization,
+                placeLabel = data.selectedProxy?.let {
+                    listOfNotNull(it.countryName.ifBlank { null }, it.host).joinToString(" · ")
+                } ?: "Recommended",
+                onRefreshPing = callbacks.onRefreshPing,
+            )
+        }
+
+        val error = data.lastError
+        if (error != null && state != ConnectionState.CONNECTING) {
+            Spacer(Modifier.height(vGap))
+            ErrorCard(error = error, corner = data.corner)
+        }
+
+        Spacer(Modifier.height(vGap))
+
+        ServerRow(
+            flag = data.selectedProxy?.emojiFlag.orEmpty(),
+            name = data.selectedProxy?.let { it.countryName.ifBlank { it.countryCode } } ?: "Recommended",
+            detail = data.selectedProxy?.let { "${it.host}:${it.port}" } ?: "Tap to choose a location",
+            personalization = data.appearance.personalization,
+            corner = data.corner,
+            onClick = callbacks.onOpenServers,
+        )
+
+        Spacer(Modifier.height(vGap))
+
+        AccountsRow(
+            accounts = data.accounts,
+            connectedCount = data.connectedCount,
+            state = state,
+            personalization = data.appearance.personalization,
+            corner = data.corner,
+            onClick = callbacks.onOpenAccounts,
+        )
+
+        Spacer(Modifier.height(vGap))
+
+        SpeedRow(stats = data.multiStats, live = state == ConnectionState.CONNECTED, corner = data.corner)
+
+        Spacer(Modifier.height(16.dp))
+    }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun HeroCard(
+    data: HomeContentData,
+    callbacks: HomeCallbacks,
+) {
+    val cs = MaterialTheme.colorScheme
+    val state = data.state
+    val live = state == ConnectionState.CONNECTED
+    val busy = state == ConnectionState.CONNECTING
+    val personalization = data.appearance.personalization
+    val container by animateColorAsState(
+        targetValue = when {
+            live -> personalization.connectedColor ?: cs.primaryContainer
+            else -> cs.surfaceContainer
+        },
+        animationSpec = tween(400),
+        label = "hero-container",
+    )
+    val ink by animateColorAsState(
+        targetValue = if (live) cs.onPrimaryContainer else cs.onSurface,
+        animationSpec = tween(400),
+        label = "hero-ink",
+    )
+    val sub by animateColorAsState(
+        targetValue = if (live) cs.onPrimaryContainer.copy(alpha = 0.75f) else cs.onSurfaceVariant,
+        animationSpec = tween(400),
+        label = "hero-sub",
+    )
+
+    Surface(
+        shape = RoundedCornerShape(data.corner),
+        color = container,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp)
-                .widthIn(max = 560.dp),
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 26.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Spacer(Modifier.height(8.dp))
-
-            HeroCard(
-                state = state,
-                elapsedSeconds = data.elapsedSeconds,
-                onToggle = callbacks.onToggle,
-            )
-
-            Spacer(Modifier.height(10.dp))
-
-            // Tappable fact chips: place / ping / accounts -> details.
-            FactChipsRow(
-                state = state,
-                placeLabel = selectedProxy?.let { it.countryName.ifBlank { it.countryCode } } ?: "Recommended",
-                flag = selectedProxy?.emojiFlag.orEmpty(),
-                pingMs = pingMs,
-                connectedCount = connectedCount,
-                totalAccounts = accounts.size,
-                onOpenDetails = callbacks.onToggleDetails,
-            )
-
-            AnimatedVisibility(visible = data.detailsOpen && state == ConnectionState.CONNECTED) {
-                DetailsPanel(
-                    accounts = accounts,
-                    stats = multiStats,
-                    pingMs = pingMs,
-                    placeLabel = selectedProxy?.let {
-                        listOfNotNull(it.countryName.ifBlank { null }, it.host).joinToString(" · ")
-                    } ?: "Recommended",
-                    onRefreshPing = callbacks.onRefreshPing,
+            HomeConnectCore(data = data, callbacks = callbacks)
+            Spacer(Modifier.height(16.dp))
+            AnimatedContent(
+                targetState = state,
+                transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(150)) },
+                label = "hero-state",
+            ) { s ->
+                Text(
+                    text = when (s) {
+                        ConnectionState.CONNECTED -> "Connected"
+                        ConnectionState.CONNECTING -> "Connecting…"
+                        ConnectionState.DISCONNECTED -> "Disconnected"
+                    },
+                    style = MaterialTheme.typography.headlineSmallEmphasized,
+                    color = ink,
+                    textAlign = TextAlign.Center,
                 )
             }
-
-            val error = data.lastError
-            if (error != null && state != ConnectionState.CONNECTING) {
+            if (busy) {
                 Spacer(Modifier.height(10.dp))
-                ErrorCard(error = error)
+                LinearWavyProgressIndicator(
+                    modifier = Modifier.width(150.dp),
+                    color = cs.primary,
+                    trackColor = cs.primary.copy(alpha = 0.18f),
+                )
+                Spacer(Modifier.height(6.dp))
+                Text("Tap the core to cancel", style = MaterialTheme.typography.bodySmall, color = sub)
+            } else if (live) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "All traffic is protected",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = sub,
+                )
             }
-
-            Spacer(Modifier.height(10.dp))
-
-            ServerRow(
-                flag = selectedProxy?.emojiFlag.orEmpty(),
-                name = selectedProxy?.let { it.countryName.ifBlank { it.countryCode } } ?: "Recommended",
-                detail = selectedProxy?.let { "${it.host}:${it.port}" } ?: "Tap to choose a location",
-                onClick = callbacks.onOpenServers,
-            )
-
-            Spacer(Modifier.height(6.dp))
-
-            AccountsRow(
-                accounts = accounts,
-                connectedCount = connectedCount,
-                state = state,
-                onClick = callbacks.onOpenAccounts,
-            )
-
-            Spacer(Modifier.height(6.dp))
-
-            SpeedRow(stats = multiStats, live = state == ConnectionState.CONNECTED)
-
-            Spacer(Modifier.height(16.dp))
         }
+    }
 }
 
 /**
- * PORTAL design: an immersive single-column layout. The connect core sits in a
- * large glowing ring at the center; connection facts live in one unified card
- * below it instead of chips + hero card.
+ * PORTAL design: immersive single column. The connect core glows at the
+ * center; facts live in one unified card below.
  */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PortalHomeBody(
     padding: PaddingValues,
@@ -361,6 +445,7 @@ private fun PortalHomeBody(
     val live = state == ConnectionState.CONNECTED
     val busy = state == ConnectionState.CONNECTING
     val selectedProxy = data.selectedProxy
+    val vGap = if (data.compact) 8.dp else 12.dp
 
     val ring by animateColorAsState(
         targetValue = when {
@@ -382,15 +467,21 @@ private fun PortalHomeBody(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(Modifier.height(12.dp))
-        Text(
-            text = when (state) {
-                ConnectionState.CONNECTED -> "Connected"
-                ConnectionState.CONNECTING -> "Connecting…"
-                ConnectionState.DISCONNECTED -> "Disconnected"
-            },
-            style = MaterialTheme.typography.headlineSmallEmphasized,
-            color = if (live) cs.primary else cs.onSurface,
-        )
+        AnimatedContent(
+            targetState = state,
+            transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(150)) },
+            label = "portal-title",
+        ) { s ->
+            Text(
+                text = when (s) {
+                    ConnectionState.CONNECTED -> "Connected"
+                    ConnectionState.CONNECTING -> "Connecting…"
+                    ConnectionState.DISCONNECTED -> "Disconnected"
+                },
+                style = MaterialTheme.typography.headlineSmallEmphasized,
+                color = if (live) cs.primary else cs.onSurface,
+            )
+        }
         if (live) {
             Text(
                 text = formatElapsed(data.elapsedSeconds),
@@ -401,36 +492,30 @@ private fun PortalHomeBody(
         }
         Spacer(Modifier.height(20.dp))
 
-        // Portal ring around the connect core.
         Box(contentAlignment = Alignment.Center) {
             Box(
                 modifier = Modifier
-                    .size(232.dp)
+                    .size(236.dp)
                     .clip(CircleShape)
-                    .background(ring.copy(alpha = 0.16f)),
+                    .background(ring.copy(alpha = 0.14f)),
             )
             Box(
                 modifier = Modifier
-                    .size(204.dp)
+                    .size(208.dp)
                     .clip(CircleShape)
-                    .background(ring.copy(alpha = 0.22f)),
+                    .background(ring.copy(alpha = 0.20f)),
             )
-            ConnectCore(
-                state = state,
-                elapsedSeconds = data.elapsedSeconds,
-                onToggle = callbacks.onToggle,
-            )
+            HomeConnectCore(data = data, callbacks = callbacks)
         }
 
         Spacer(Modifier.height(20.dp))
 
-        // Unified info card.
         Surface(
-            shape = RoundedCornerShape(28.dp),
+            shape = RoundedCornerShape(data.corner),
             color = cs.surfaceContainer,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Column(Modifier.padding(vertical = 8.dp)) {
+            Column(Modifier.padding(vertical = 6.dp)) {
                 PortalInfoRow(
                     label = "Location",
                     value = selectedProxy?.let { it.countryName.ifBlank { it.countryCode } } ?: "Recommended",
@@ -456,26 +541,30 @@ private fun PortalHomeBody(
 
         val error = data.lastError
         if (error != null && state != ConnectionState.CONNECTING) {
-            Spacer(Modifier.height(10.dp))
-            ErrorCard(error = error)
+            Spacer(Modifier.height(vGap))
+            ErrorCard(error = error, corner = data.corner)
         }
 
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(vGap))
         ServerRow(
             flag = selectedProxy?.emojiFlag.orEmpty(),
             name = selectedProxy?.let { it.countryName.ifBlank { it.countryCode } } ?: "Recommended",
             detail = selectedProxy?.let { "${it.host}:${it.port}" } ?: "Tap to choose a location",
+            personalization = data.appearance.personalization,
+            corner = data.corner,
             onClick = callbacks.onOpenServers,
         )
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(vGap))
         AccountsRow(
             accounts = data.accounts,
             connectedCount = data.connectedCount,
             state = state,
+            personalization = data.appearance.personalization,
+            corner = data.corner,
             onClick = callbacks.onOpenAccounts,
         )
-        Spacer(Modifier.height(6.dp))
-        SpeedRow(stats = data.multiStats, live = live)
+        Spacer(Modifier.height(vGap))
+        SpeedRow(stats = data.multiStats, live = live, corner = data.corner)
         Spacer(Modifier.height(16.dp))
     }
 }
@@ -506,10 +595,9 @@ private fun PortalInfoRow(label: String, value: String, flag: String) {
 }
 
 /**
- * CLASSIC design: the traditional VPN-app layout. Big round button, status
- * line, and plain divided rows — no cards, no chips.
+ * CLASSIC design: traditional VPN-app layout — big button, status line,
+ * plain divided rows.
  */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun OldHomeBody(
     padding: PaddingValues,
@@ -531,23 +619,25 @@ private fun OldHomeBody(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(Modifier.height(24.dp))
-        Text(
-            text = when (state) {
-                ConnectionState.CONNECTED -> "VPN is ON"
-                ConnectionState.CONNECTING -> "Connecting…"
-                ConnectionState.DISCONNECTED -> "VPN is OFF"
-            },
-            style = MaterialTheme.typography.headlineMedium,
-            color = if (live) cs.primary else cs.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(16.dp))
-        ConnectCore(
-            state = state,
-            elapsedSeconds = data.elapsedSeconds,
-            onToggle = callbacks.onToggle,
-        )
+        AnimatedContent(
+            targetState = state,
+            transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(150)) },
+            label = "classic-title",
+        ) { s ->
+            Text(
+                text = when (s) {
+                    ConnectionState.CONNECTED -> "VPN is ON"
+                    ConnectionState.CONNECTING -> "Connecting…"
+                    ConnectionState.DISCONNECTED -> "VPN is OFF"
+                },
+                style = MaterialTheme.typography.headlineMedium,
+                color = if (live) cs.primary else cs.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.height(18.dp))
+        HomeConnectCore(data = data, callbacks = callbacks)
         if (live) {
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(10.dp))
             Text(
                 text = "Connected for ${formatElapsed(data.elapsedSeconds)}",
                 style = MaterialTheme.typography.bodyMedium,
@@ -558,7 +648,7 @@ private fun OldHomeBody(
 
         val error = data.lastError
         if (error != null && state != ConnectionState.CONNECTING) {
-            ErrorCard(error = error)
+            ErrorCard(error = error, corner = data.corner)
             Spacer(Modifier.height(12.dp))
         }
 
@@ -567,18 +657,21 @@ private fun OldHomeBody(
             subtitle = selectedProxy?.let {
                 "${it.countryName.ifBlank { it.countryCode }} · ${it.host}:${it.port}"
             } ?: "Recommended — tap to choose",
+            monospace = data.appearance.personalization.monospaceAddress,
             onClick = callbacks.onOpenServers,
         )
         HorizontalDivider(color = cs.outlineVariant.copy(alpha = 0.6f))
         ClassicRow(
             title = "Accounts",
             subtitle = "${data.connectedCount} of ${data.accounts.size} connected",
+            monospace = false,
             onClick = callbacks.onOpenAccounts,
         )
         HorizontalDivider(color = cs.outlineVariant.copy(alpha = 0.6f))
         ClassicRow(
             title = "Speed",
             subtitle = if (live) "Live" else "Idle",
+            monospace = false,
             onClick = {},
         )
         Spacer(Modifier.height(16.dp))
@@ -586,7 +679,7 @@ private fun OldHomeBody(
 }
 
 @Composable
-private fun ClassicRow(title: String, subtitle: String, onClick: () -> Unit) {
+private fun ClassicRow(title: String, subtitle: String, monospace: Boolean, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -598,7 +691,9 @@ private fun ClassicRow(title: String, subtitle: String, onClick: () -> Unit) {
             Text(text = title, style = MaterialTheme.typography.titleMedium)
             Text(
                 text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontFamily = if (monospace) FontFamily.Monospace else FontFamily.Default,
+                ),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -612,166 +707,7 @@ private fun ClassicRow(title: String, subtitle: String, onClick: () -> Unit) {
     }
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalFoundationApi::class)
-@Composable
-private fun HeroCard(
-    state: ConnectionState,
-    elapsedSeconds: Int,
-    onToggle: () -> Unit,
-) {
-    val cs = MaterialTheme.colorScheme
-    val live = state == ConnectionState.CONNECTED
-    val busy = state == ConnectionState.CONNECTING
-    val container by animateColorAsState(
-        targetValue = if (live) cs.primaryContainer else cs.surfaceContainer,
-        animationSpec = tween(400),
-        label = "hero-container",
-    )
-    val ink by animateColorAsState(
-        targetValue = if (live) cs.onPrimaryContainer else cs.onSurface,
-        animationSpec = tween(400),
-        label = "hero-ink",
-    )
-    val sub by animateColorAsState(
-        targetValue = if (live) cs.onPrimaryContainer.copy(alpha = 0.75f) else cs.onSurfaceVariant,
-        animationSpec = tween(400),
-        label = "hero-sub",
-    )
-
-    Surface(
-        shape = RoundedCornerShape(40.dp),
-        color = container,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            ConnectCore(
-                state = state,
-                elapsedSeconds = elapsedSeconds,
-                onToggle = onToggle,
-            )
-            Spacer(Modifier.height(14.dp))
-            AnimatedContent(
-                targetState = state,
-                transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(150)) },
-                label = "hero-state",
-            ) { s ->
-                Text(
-                    text = when (s) {
-                        ConnectionState.CONNECTED -> "Connected"
-                        ConnectionState.CONNECTING -> "Connecting…"
-                        ConnectionState.DISCONNECTED -> "Disconnected"
-                    },
-                    style = MaterialTheme.typography.headlineSmallEmphasized,
-                    color = ink,
-                    textAlign = TextAlign.Center,
-                )
-            }
-            if (busy) {
-                Spacer(Modifier.height(10.dp))
-                LinearWavyProgressIndicator(
-                    modifier = Modifier.width(150.dp),
-                    color = cs.primary,
-                    trackColor = cs.primary.copy(alpha = 0.18f),
-                )
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "Tap the core to cancel",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = sub,
-                )
-            }
-        }
-    }
-}
-
-/**
- * The morphing connect core: a canvas-drawn blob that morphs between a
- * circle (idle) and a soft burst (connected), rotating slowly while active.
- */
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun ConnectCore(
-    state: ConnectionState,
-    elapsedSeconds: Int,
-    onToggle: () -> Unit,
-) {
-    val cs = MaterialTheme.colorScheme
-    val live = state == ConnectionState.CONNECTED
-    val busy = state == ConnectionState.CONNECTING
-
-    val morph by animateFloatAsState(
-        targetValue = if (live) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.65f, stiffness = Spring.StiffnessMediumLow),
-        label = "core-morph",
-    )
-    val rotation = remember { androidx.compose.animation.core.Animatable(0f) }
-    LaunchedEffect(live, busy) {
-        if (live || busy) {
-            while (true) {
-                rotation.animateTo(rotation.value + 360f, tween(14_000))
-            }
-        }
-    }
-
-    val source = remember { MutableInteractionSource() }
-    val pressed by source.collectIsPressedAsState()
-    val squash by animateFloatAsState(
-        targetValue = if (pressed) 0.9f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
-        label = "core-squash",
-    )
-    val start = cs.primary
-    val end = cs.tertiary
-
-    Box(
-        modifier = Modifier
-            .size(168.dp)
-            .graphicsLayer {
-                scaleX = squash
-                scaleY = squash
-            }
-            .combinedClickable(
-                interactionSource = source,
-                indication = null,
-                role = Role.Button,
-                onClick = onToggle,
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
-        Canvas(Modifier.matchParentSize()) {
-            val cornerFraction = 0.5f - 0.22f * morph // circle -> soft squircle
-            val radius = size.minDimension / 2f * cornerFraction
-            rotate(rotation.value) {
-                drawRoundRect(
-                    brush = Brush.linearGradient(listOf(start, end), Offset.Zero, Offset(size.width, size.height)),
-                    size = size,
-                    cornerRadius = CornerRadius(radius, radius),
-                )
-            }
-        }
-        if (live) {
-            Text(
-                text = formatElapsed(elapsedSeconds),
-                style = MaterialTheme.typography.headlineSmallEmphasized,
-                color = cs.onPrimary,
-            )
-        } else {
-            Icon(
-                imageVector = Icons.Filled.Power,
-                contentDescription = if (busy) "Cancel" else "Connect",
-                tint = cs.onPrimary,
-                modifier = Modifier.size(56.dp),
-            )
-        }
-    }
-}
-
-private fun formatElapsed(totalSeconds: Int): String {
+fun formatElapsed(totalSeconds: Int): String {
     val h = totalSeconds / 3600
     val m = (totalSeconds % 3600) / 60
     val s = totalSeconds % 60
@@ -851,28 +787,36 @@ private fun DetailsPanel(
     accounts: List<VpnAccount>,
     stats: List<AccountLiveStats>,
     pingMs: Int,
+    personalization: Personalization,
     placeLabel: String,
     onRefreshPing: () -> Unit,
 ) {
     val cs = MaterialTheme.colorScheme
     val byId = remember(stats) { stats.associateBy { it.accountId } }
     Surface(
-        shape = RoundedCornerShape(28.dp),
-        color = cs.surfaceContainerHigh,
+        shape = RoundedCornerShape(personalization.cornerStyle.cardDp.dp),
+        color = personalization.configCardColor ?: cs.surfaceContainerHigh,
         modifier = Modifier.fillMaxWidth(),
     ) {
+        val contentColor = personalization.configCardTextColor
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     "Connection details",
                     style = MaterialTheme.typography.titleSmallEmphasized,
+                    color = contentColor ?: cs.onSurface,
                     modifier = Modifier.weight(1f),
                 )
                 IconButton(onClick = onRefreshPing, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.Filled.Refresh, contentDescription = "Refresh ping", modifier = Modifier.size(18.dp))
+                    Icon(
+                        Icons.Filled.Refresh,
+                        contentDescription = "Refresh ping",
+                        modifier = Modifier.size(18.dp),
+                        tint = contentColor ?: cs.onSurfaceVariant,
+                    )
                 }
             }
-            DetailRow("Location", placeLabel)
+            DetailRow("Location", placeLabel, contentColor)
             DetailRow(
                 "Ping",
                 when (pingMs) {
@@ -880,12 +824,13 @@ private fun DetailsPanel(
                     -2 -> "unavailable"
                     else -> "$pingMs ms"
                 },
+                contentColor,
             )
             if (accounts.isEmpty()) {
                 Text(
                     "No accounts yet — add some from the Accounts screen.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = cs.onSurfaceVariant,
+                    color = contentColor?.copy(alpha = 0.75f) ?: cs.onSurfaceVariant,
                 )
             } else {
                 accounts.forEach { account ->
@@ -898,6 +843,7 @@ private fun DetailsPanel(
                             !s.isConnected -> "dialing…"
                             else -> "↓ ${formatBytesPerSecond(s.speedDownBytesPerSec)} · ↑ ${formatBytesPerSecond(s.speedUpBytesPerSec)}"
                         },
+                        contentColor = contentColor,
                     )
                 }
             }
@@ -906,12 +852,13 @@ private fun DetailsPanel(
 }
 
 @Composable
-private fun DetailRow(label: String, value: String) {
+private fun DetailRow(label: String, value: String, contentColor: Color?) {
+    val cs = MaterialTheme.colorScheme
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(
             label,
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = contentColor?.copy(alpha = 0.75f) ?: cs.onSurfaceVariant,
             modifier = Modifier.weight(1f),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -919,6 +866,7 @@ private fun DetailRow(label: String, value: String) {
         Text(
             value,
             style = MaterialTheme.typography.labelLarge,
+            color = contentColor ?: cs.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -926,10 +874,10 @@ private fun DetailRow(label: String, value: String) {
 }
 
 @Composable
-private fun ErrorCard(error: String) {
+private fun ErrorCard(error: String, corner: Dp) {
     val cs = MaterialTheme.colorScheme
     Surface(
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(corner),
         color = cs.errorContainer,
         contentColor = cs.onErrorContainer,
         modifier = Modifier.fillMaxWidth(),
@@ -944,12 +892,19 @@ private fun ErrorCard(error: String) {
 }
 
 @Composable
-private fun ServerRow(flag: String, name: String, detail: String, onClick: () -> Unit) {
+private fun ServerRow(
+    flag: String,
+    name: String,
+    detail: String,
+    personalization: Personalization,
+    corner: Dp,
+    onClick: () -> Unit,
+) {
     val cs = MaterialTheme.colorScheme
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(28.dp),
-        color = cs.surfaceContainerHigh,
+        shape = RoundedCornerShape(corner),
+        color = personalization.serverCardColor ?: cs.surfaceContainerHigh,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
@@ -976,7 +931,9 @@ private fun ServerRow(flag: String, name: String, detail: String, onClick: () ->
                 Text(name, style = MaterialTheme.typography.titleMediumEmphasized, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     detail,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontFamily = if (personalization.monospaceAddress) FontFamily.Monospace else FontFamily.Default,
+                    ),
                     color = cs.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -992,14 +949,16 @@ private fun AccountsRow(
     accounts: List<VpnAccount>,
     connectedCount: Int,
     state: ConnectionState,
+    personalization: Personalization,
+    corner: Dp,
     onClick: () -> Unit,
 ) {
     val cs = MaterialTheme.colorScheme
-    val statusColors = com.vauth.foxyvpn.ui.theme.LocalFoxyStatusColors.current
+    val statusColors = LocalFoxyStatusColors.current
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(28.dp),
-        color = cs.surfaceContainerHigh,
+        shape = RoundedCornerShape(corner),
+        color = personalization.serverActiveColor ?: cs.surfaceContainerHigh,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
@@ -1027,7 +986,6 @@ private fun AccountsRow(
                     color = cs.onSurfaceVariant,
                 )
             }
-            // Per-account status dots.
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 accounts.take(8).forEach { account ->
                     val dot = when {
@@ -1046,7 +1004,7 @@ private fun AccountsRow(
 }
 
 @Composable
-private fun SpeedRow(stats: List<AccountLiveStats>, live: Boolean) {
+private fun SpeedRow(stats: List<AccountLiveStats>, live: Boolean, corner: Dp) {
     val cs = MaterialTheme.colorScheme
     val down = stats.sumOf { it.speedDownBytesPerSec }
     val up = stats.sumOf { it.speedUpBytesPerSec }
@@ -1060,6 +1018,7 @@ private fun SpeedRow(stats: List<AccountLiveStats>, live: Boolean) {
             value = if (live) formatBytesPerSecond(down) else "—",
             badge = cs.tertiaryContainer,
             onBadge = cs.onTertiaryContainer,
+            corner = corner,
             modifier = Modifier.weight(1f),
         )
         SpeedTile(
@@ -1068,6 +1027,7 @@ private fun SpeedRow(stats: List<AccountLiveStats>, live: Boolean) {
             value = if (live) formatBytesPerSecond(up) else "—",
             badge = cs.primaryContainer,
             onBadge = cs.onPrimaryContainer,
+            corner = corner,
             modifier = Modifier.weight(1f),
         )
     }
@@ -1080,10 +1040,11 @@ private fun SpeedTile(
     value: String,
     badge: Color,
     onBadge: Color,
+    corner: Dp,
     modifier: Modifier = Modifier,
 ) {
     val cs = MaterialTheme.colorScheme
-    Surface(shape = RoundedCornerShape(24.dp), color = cs.surfaceContainerHigh, modifier = modifier) {
+    Surface(shape = RoundedCornerShape(corner), color = cs.surfaceContainerHigh, modifier = modifier) {
         Row(
             Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
