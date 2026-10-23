@@ -91,6 +91,22 @@ class TokenStore(context: Context) {
         _accountsFlow.value = emptyList()
     }
 
+    /**
+     * Clears ONLY the legacy single-session keys. The multi-account list
+     * (accounts_json_v1) and usage stats are NEVER touched here.
+     *
+     * Background: restoreSession() used to call clear() when the legacy
+     * session died, which wiped every saved account on every cold start —
+     * the "close the app, lose everything" bug.
+     */
+    fun clearLegacySession() {
+        prefs.edit()
+            .remove(KEY_ACCESS_TOKEN)
+            .remove(KEY_REFRESH_TOKEN)
+            .remove(KEY_EXPIRES_AT)
+            .apply()
+    }
+
     // ------------------------------------------------------------------
     // Multi-account storage. Accounts live in the same encrypted prefs
     // ("foxyvpn_tokens") as the legacy single session, serialized as JSON.
