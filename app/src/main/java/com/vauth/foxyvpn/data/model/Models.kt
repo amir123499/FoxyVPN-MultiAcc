@@ -1,5 +1,8 @@
 package com.vauth.foxyvpn.data.model
 
+import java.util.UUID
+import kotlinx.serialization.Serializable
+
 enum class ConnectionState { DISCONNECTED, CONNECTING, CONNECTED }
 
 data class VpnProtocol(
@@ -47,11 +50,53 @@ data class Entitlement(
     val quotaRemaining: Long? = null,
 )
 
+@Serializable
 data class RuntimeAuth(
     val accessToken: String,
     val refreshToken: String?,
     val expiresAtEpochSeconds: Long,
 )
+
+/**
+ * One Mozilla/FxA account held by the multi-account patch.
+ *
+ * @param quotaMax default 50 GiB, the Mozilla VPN monthly allowance per account.
+ */
+@Serializable
+data class VpnAccount(
+    val id: String = UUID.randomUUID().toString(),
+    val email: String,
+    val auth: RuntimeAuth,
+    val isEnabled: Boolean = true,
+    val addedAtEpochSeconds: Long = System.currentTimeMillis() / 1000,
+    val quotaMax: Long = DEFAULT_ACCOUNT_QUOTA_BYTES,
+    val quotaRemaining: Long? = null,
+    val uid: String? = null,
+    val lastError: String? = null,
+)
+
+@Serializable
+data class BatchImportItemResult(
+    val identifier: String,
+    val success: Boolean,
+    val error: String? = null,
+    val account: VpnAccount? = null,
+)
+
+@Serializable
+data class AccountLiveStats(
+    val accountId: String,
+    val email: String,
+    val isConnected: Boolean = false,
+    val isExhausted: Boolean = false,
+    val activeStreams: Int = 0,
+    val bytesDown: Long = 0L,
+    val bytesUp: Long = 0L,
+    val speedDownBytesPerSec: Long = 0L,
+    val speedUpBytesPerSec: Long = 0L,
+)
+
+const val DEFAULT_ACCOUNT_QUOTA_BYTES: Long = 50L * 1024L * 1024L * 1024L
 
 fun countryCodeToEmojiFlag(countryCode: String): String {
     if (countryCode.equals("REC", ignoreCase = true) || countryCode.length != 2) return ""
