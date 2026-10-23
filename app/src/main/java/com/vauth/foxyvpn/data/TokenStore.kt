@@ -28,6 +28,34 @@ class TokenStore(context: Context) {
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
     )
 
+    // Cumulative per-account byte usage. Plain prefs (not sensitive), keyed
+    // by account id. Accumulated from the pool's live stats so the quota bar
+    // survives reconnects; reset when the server reports a fresh quota.
+    private val usagePrefs = context.getSharedPreferences("foxyvpn_usage", Context.MODE_PRIVATE)
+    private val _usageFlow = MutableStateFlow(loadUsage())
+    val usageFlow: StateFlow<Map<String, Long>> = _usageFlow
+
+    fun getUsedBytes(accountId: String): Long = _usageFlow.value[accountId] ?: 0L
+
+    fun addUsedBytes(accountId: String, deltaBytes: Long) {
+        if (deltaBytes <= 0L) return
+        val next = (_usageFlow.value[accountId] ?: 0L) + deltaBytes
+        usagePrefs.edit().putLong(usageKey(accountId), next).apply()
+        _usageFlow.value = _usageFlow.value + (accountId to next)
+    }
+
+    fun resetUsedBytes(accountId: String) {
+        usagePrefs.edit().remove(usageKey(accountId)).apply()
+        _usageFlow.value = _usageFlow.value - accountId
+    }
+
+    private fun usageKey(accountId: String) = "used_$accountId"
+
+    private fun loadUsage(): Map<String, Long> =
+        usagePrefs.all.mapNotNull { (k, v) ->
+            if (k.startsWith("used_") && v is Long) k.removePrefix("used_") to v else null
+        }.toMap()
+
     fun saveAuth(auth: RuntimeAuth) {
         prefs.edit()
             .putString(KEY_ACCESS_TOKEN, auth.accessToken)
@@ -58,6 +86,8 @@ class TokenStore(context: Context) {
 
     fun clear() {
         prefs.edit().clear().apply()
+        usagePrefs.edit().clear().apply()
+        _usageFlow.value = emptyMap()
         _accountsFlow.value = emptyList()
     }
 
@@ -105,6 +135,7 @@ class TokenStore(context: Context) {
 
     fun removeAccount(id: String) {
         saveAccounts(_accountsFlow.value.filterNot { it.id == id })
+        resetUsedBytes(id)
     }
 
     fun toggleAccount(id: String, enabled: Boolean) {
