@@ -1,7 +1,9 @@
 package com.vauth.foxyvpn.data
 
 import android.util.Base64
+import com.vauth.foxyvpn.data.model.BatchImportItemResult
 import com.vauth.foxyvpn.data.model.RuntimeAuth
+import com.vauth.foxyvpn.data.model.VpnAccount
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -11,6 +13,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import org.json.JSONArray
 import org.json.JSONObject
 import java.nio.ByteBuffer
 import java.security.MessageDigest
@@ -118,6 +121,29 @@ class FxaAuthRepository(
             ?: throw FxaRefreshFailure("Not signed in", permanent = true)
         if (!force && tokenStore.hasValidAccessToken()) return current
 
+        val renewed = refreshAuth(current)
+        runCatching { tokenStore.saveAuth(renewed) }
+            .onFailure { AppLogger.w(TAG, "could not persist the renewed token", it) }
+        return renewed
+    }
+
+    /**
+     * Per-account variant used by the multi-account patch: refreshes the given
+     * account's tokens through the same FxA grant as [ensureFreshAccessToken]
+     * but does NOT touch the legacy single-session store. The caller persists
+     * the returned auth (e.g. via TokenStore.updateAccount).
+     */
+    suspend fun ensureFreshAccessTokenForAccount(account: VpnAccount, force: Boolean = false): RuntimeAuth {
+        val current = account.auth
+        if (!force) {
+            val nowSeconds = System.currentTimeMillis() / 1000
+            if (current.expiresAtEpochSeconds - nowSeconds > 60L) return current
+        }
+        return refreshAuth(current)
+    }
+
+    /** Shared refresh-grant implementation; pure w.r.t. storage. */
+    private suspend fun refreshAuth(current: RuntimeAuth): RuntimeAuth {
         val refreshToken = current.refreshToken
             ?: throw FxaRefreshFailure(
                 "The stored session has no refresh token; sign in again.",
@@ -155,14 +181,11 @@ class FxaAuthRepository(
                 permanent = false,
             )
 
-        val renewed = RuntimeAuth(
+        return RuntimeAuth(
             accessToken = accessToken,
             refreshToken = tokenData.optString("refresh_token", "").ifBlank { null } ?: refreshToken,
             expiresAtEpochSeconds = expiryFrom(tokenData),
         )
-        runCatching { tokenStore.saveAuth(renewed) }
-            .onFailure { AppLogger.w(TAG, "could not persist the renewed token", it) }
-        return renewed
     }
 
     suspend fun currentAccessToken(): String? = try {
@@ -171,6 +194,148 @@ class FxaAuthRepository(
         throw cancellation
     } catch (failure: FxaRefreshFailure) {
         if (failure.permanent) null else tokenStore.loadAuth()?.accessToken
+    }
+
+    // ------------------------------------------------------------------
+    // Batch import (multi-account patch). Every login goes through the
+    // existing FxA crypto path above (loginAttempt/oauthToken/refreshAuth);
+    // no new auth logic is introduced here.
+    // ------------------------------------------------------------------
+
+    data class BatchParsedItem(
+        val raw: String,
+        val email: String,
+        val password: String? = null,
+        val accessToken: String? = null,
+        val refreshToken: String? = null,
+    )
+
+    /**
+     * Accepts a JSON array of {"email", "password"? , "accessToken"/"access_token"?,
+     * "refreshToken"/"refresh_token"?} objects, one JSON object per line, or
+     * line-based "email:password" / "email|password" / "email password" entries.
+     */
+    fun parseBatchInput(rawText: String): List<BatchParsedItem> {
+        val items = mutableListOf<BatchParsedItem>()
+        val trimmed = rawText.trim()
+        if (trimmed.isEmpty()) return items
+
+        fun fromJsonObject(obj: JSONObject, raw: String): BatchParsedItem? {
+            val email = obj.optString("email").trim().ifBlank { return null }
+            return BatchParsedItem(
+                raw = raw,
+                email = email,
+                password = obj.optString("password").ifBlank { null },
+                accessToken = obj.optString("accessToken").ifBlank { null }
+                    ?: obj.optString("access_token").ifBlank { null },
+                refreshToken = obj.optString("refreshToken").ifBlank { null }
+                    ?: obj.optString("refresh_token").ifBlank { null },
+            )
+        }
+
+        if (trimmed.startsWith("[")) {
+            val arr = runCatching { JSONArray(trimmed) }.getOrNull() ?: return items
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                fromJsonObject(obj, obj.toString())?.let { items += it }
+            }
+            return items
+        }
+
+        for (line in trimmed.lines()) {
+            val entry = line.trim()
+            if (entry.isEmpty()) continue
+            if (entry.startsWith("{")) {
+                val obj = runCatching { JSONObject(entry) }.getOrNull() ?: continue
+                fromJsonObject(obj, entry)?.let { items += it }
+                continue
+            }
+            val parts = entry.split(Regex("[:|\\t ]+"), limit = 2).map { it.trim() }
+            if (parts.size == 2 && parts[0].contains("@")) {
+                items += BatchParsedItem(raw = entry, email = parts[0], password = parts[1].ifBlank { null })
+            } else if (parts.size == 1 && entry.contains("@")) {
+                items += BatchParsedItem(raw = entry, email = entry)
+            }
+        }
+        return items
+    }
+
+    /**
+     * Logs each parsed entry in through the normal FxA flow and stores the
+     * resulting account in [TokenStore]. Returns a per-item result list.
+     */
+    suspend fun batchImportAccounts(
+        rawText: String,
+        onProgress: (current: Int, total: Int, label: String) -> Unit = { _, _, _ -> },
+    ): List<BatchImportItemResult> {
+        val items = parseBatchInput(rawText)
+        val results = mutableListOf<BatchImportItemResult>()
+        items.forEachIndexed { index, item ->
+            onProgress(index + 1, items.size, item.email)
+            val result = runCatching {
+                val auth = when {
+                    !item.password.isNullOrBlank() ->
+                        loginForAccount(item.email, item.password).getOrThrow()
+                    !item.accessToken.isNullOrBlank() -> {
+                        val provisional = RuntimeAuth(
+                            accessToken = item.accessToken,
+                            refreshToken = item.refreshToken,
+                            expiresAtEpochSeconds = 0L,
+                        )
+                        ensureFreshAccessTokenForAccount(
+                            VpnAccount(email = item.email, auth = provisional),
+                            force = true,
+                        )
+                    }
+                    else -> error("No password or access token provided for this entry.")
+                }
+                val account = VpnAccount(email = normalizeEmail(item.email), auth = auth)
+                tokenStore.addAccount(account)
+                BatchImportItemResult(identifier = item.email, success = true, account = account)
+            }.getOrElse { failure ->
+                if (failure is CancellationException) throw failure
+                BatchImportItemResult(
+                    identifier = item.email,
+                    success = false,
+                    error = failure.message ?: "Import failed",
+                )
+            }
+            results += result
+        }
+        return results
+    }
+
+    /**
+     * Logs one account in and stores it in [TokenStore]. Used by the
+     * single-account login dialog.
+     */
+    suspend fun loginSingleAccount(email: String, password: String): Result<VpnAccount> =
+        loginForAccount(email, password).map { auth ->
+            val account = VpnAccount(email = normalizeEmail(email), auth = auth)
+            tokenStore.addAccount(account)
+            account
+        }
+
+    /**
+     * Same login flow as [startLogin]/[completeLogin] but returns the
+     * [RuntimeAuth] instead of writing it to the legacy single-session store.
+     * Accounts that still need an email verification code cannot be imported
+     * in batch and are reported as failures.
+     */
+    private suspend fun loginForAccount(email: String, password: String): Result<RuntimeAuth> = runCatching {
+        val cleanEmail = normalizeEmail(email)
+        val data = loginAttempt(cleanEmail, password)
+        val sessionToken = data.getString("sessionToken")
+        val verified = data.optBoolean("verified", false)
+        if (!verified) {
+            error("This account needs an email verification code; sign it in once from the login screen instead.")
+        }
+        val tokenData = oauthToken(sessionToken)
+        RuntimeAuth(
+            accessToken = tokenData.getString("access_token"),
+            refreshToken = tokenData.optString("refresh_token", "").ifBlank { null },
+            expiresAtEpochSeconds = expiryFrom(tokenData),
+        )
     }
 
     suspend fun refreshAccessToken(): RuntimeAuth? = try {
