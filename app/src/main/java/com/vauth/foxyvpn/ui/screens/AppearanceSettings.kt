@@ -81,7 +81,8 @@ import com.vauth.foxyvpn.ui.theme.accentSeed
 import kotlinx.coroutines.delay
 
 /**
- * The full Interface section, ported from ZedSecure's Ui settings page.
+ * The Interface section. Its layout uses ZedSecure's settings page as a design
+ * reference only.
  * Appearance only — the VPN core is untouched.
  */
 @Composable
