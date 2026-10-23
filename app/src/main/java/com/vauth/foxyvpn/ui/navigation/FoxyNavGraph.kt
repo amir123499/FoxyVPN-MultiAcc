@@ -40,9 +40,9 @@ fun FoxyNavGraph(
         navController = navController,
         startDestination = FoxyRoutes.SPLASH,
         enterTransition = { transition.targetContentEnter },
-        exitTransition = { transition.targetContentExit },
+        exitTransition = { transition.initialContentExit },
         popEnterTransition = { transition.targetContentEnter },
-        popExitTransition = { transition.targetContentExit },
+        popExitTransition = { transition.initialContentExit },
     ) {
         composable(FoxyRoutes.SPLASH) {
             SplashScreen(
