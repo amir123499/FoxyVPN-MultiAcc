@@ -89,10 +89,12 @@ class FxaAuthRepository(
 
     suspend fun restoreSession(): SessionStatus {
         val stored = runCatching { tokenStore.loadAuth() }.getOrNull()
-            ?: return SessionStatus.NEEDS_LOGIN
+            ?: return if (tokenStore.hasAnyAccount()) SessionStatus.ACTIVE else SessionStatus.NEEDS_LOGIN
         if (stored.refreshToken == null && !tokenStore.hasValidAccessToken()) {
-            runCatching { tokenStore.clear() }
-            return SessionStatus.NEEDS_LOGIN
+            // Dead legacy session: drop ONLY its keys. The multi-account
+            // list must survive — each VpnAccount carries its own auth.
+            runCatching { tokenStore.clearLegacySession() }
+            return if (tokenStore.hasAnyAccount()) SessionStatus.ACTIVE else SessionStatus.NEEDS_LOGIN
         }
         if (tokenStore.hasValidAccessToken()) return SessionStatus.ACTIVE
 
@@ -104,8 +106,8 @@ class FxaAuthRepository(
         } catch (failure: FxaRefreshFailure) {
             if (failure.permanent) {
                 AppLogger.w(TAG, "FxA rejected the stored session; signing out", failure)
-                runCatching { tokenStore.clear() }
-                SessionStatus.NEEDS_LOGIN
+                runCatching { tokenStore.clearLegacySession() }
+                return if (tokenStore.hasAnyAccount()) SessionStatus.ACTIVE else SessionStatus.NEEDS_LOGIN
             } else {
                 AppLogger.w(TAG, "could not renew the session right now; staying signed in", failure)
                 SessionStatus.UNREACHABLE
