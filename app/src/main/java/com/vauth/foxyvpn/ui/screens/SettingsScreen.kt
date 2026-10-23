@@ -390,7 +390,7 @@ fun SettingsScreen(
                     onClick = onOpenLogs,
                 )
                 SettingsStaticRow(title = "Version", subtitle = BuildConfig.VERSION_NAME)
-                SettingsStaticRow(title = "Created by", subtitle = "amirhossein asgari & muse")
+                SettingsStaticRow(title = "Created by", subtitle = "muse")
                 SettingsNavRow(
                     title = "Source code",
                     subtitle = GITHUB_URL,
