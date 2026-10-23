@@ -342,7 +342,6 @@ private fun PixelHomeBody(
 
             Spacer(Modifier.height(16.dp))
         }
-    }
 }
 
 /**
