@@ -38,7 +38,7 @@ val hasReleaseSigning = releaseKeystoreFile.exists() &&
     !releaseStorePassword.isNullOrBlank()
 
 android {
-    namespace = "com.aistudio.foxyvpn.multiacc"
+    namespace = "com.vauth.foxyvpn"
     compileSdk = 35
 
     ndkVersion = "26.1.10909125"
