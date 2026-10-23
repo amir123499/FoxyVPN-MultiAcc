@@ -96,6 +96,8 @@ private const val INITIAL_DIAL_BACKOFF_BASE_MS = 2_000L
 private const val INITIAL_DIAL_BACKOFF_CAP_MS = 8_000L
 
 private const val SPEED_UPDATE_INTERVAL_MS = 2_000L
+/** v1.3 lag fix: EncryptedSharedPreferences writes are slow — throttle usage persistence. */
+private const val USAGE_PERSIST_INTERVAL_MS = 30_000L
 
 private const val TUN_ADDRESS_IPV6 = "fd00:1:fd00:1:fd00:1:fd00:1"
 private const val TUN_PREFIX_LENGTH_IPV6 = 128
@@ -138,6 +140,7 @@ class FoxyVpnService : VpnService() {
 
     private var poolStatsJob: Job? = null
     private var lastPersistedBytes: Map<String, Long> = emptyMap()
+    private var lastPersistAt: Long = 0L
 
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
@@ -981,6 +984,7 @@ class FoxyVpnService : VpnService() {
         poolStatsJob?.cancel()
         val pool = upstreamSession as? MultiUpstreamSessionPool ?: return
         lastPersistedBytes = emptyMap()
+        lastPersistAt = 0L
         poolStatsJob = scope.launch {
             pool.startStatsTracker(this)
             pool.liveStats.collect { stats ->
@@ -988,8 +992,12 @@ class FoxyVpnService : VpnService() {
                 _connectedAccountCount.value = stats.count { it.isConnected && !it.isExhausted }
                 // Lightweight cumulative usage persistence (Bug 2): the pool
                 // counters reset on every redial, so accumulate deltas here.
+                // v1.3 lag fix: EncryptedSharedPreferences writes are slow —
+                // persist at most every 30s instead of on every 2s tick.
+                val now = System.currentTimeMillis()
                 val tokenStore = (applicationContext as? FoxyVpnApp)?.tokenStore
-                if (tokenStore != null) {
+                if (tokenStore != null && now - lastPersistAt >= USAGE_PERSIST_INTERVAL_MS) {
+                    lastPersistAt = now
                     val prev = lastPersistedBytes
                     for (s in stats) {
                         val total = s.bytesDown + s.bytesUp
