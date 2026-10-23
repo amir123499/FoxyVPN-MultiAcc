@@ -137,6 +137,7 @@ class FoxyVpnService : VpnService() {
     private var tokenRenewalJob: Job? = null
 
     private var poolStatsJob: Job? = null
+    private var lastPersistedBytes: Map<String, Long> = emptyMap()
 
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
@@ -979,11 +980,24 @@ class FoxyVpnService : VpnService() {
     private fun attachPoolStats() {
         poolStatsJob?.cancel()
         val pool = upstreamSession as? MultiUpstreamSessionPool ?: return
+        lastPersistedBytes = emptyMap()
         poolStatsJob = scope.launch {
             pool.startStatsTracker(this)
             pool.liveStats.collect { stats ->
                 _multiAccountStats.value = stats
                 _connectedAccountCount.value = stats.count { it.isConnected && !it.isExhausted }
+                // Lightweight cumulative usage persistence (Bug 2): the pool
+                // counters reset on every redial, so accumulate deltas here.
+                val tokenStore = (applicationContext as? FoxyVpnApp)?.tokenStore
+                if (tokenStore != null) {
+                    val prev = lastPersistedBytes
+                    for (s in stats) {
+                        val total = s.bytesDown + s.bytesUp
+                        val p = prev[s.accountId] ?: 0L
+                        if (total > p) tokenStore.addUsedBytes(s.accountId, total - p)
+                    }
+                    lastPersistedBytes = stats.associate { it.accountId to (it.bytesDown + it.bytesUp) }
+                }
             }
         }
     }
