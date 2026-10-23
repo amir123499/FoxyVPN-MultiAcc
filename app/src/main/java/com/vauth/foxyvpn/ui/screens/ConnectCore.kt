@@ -45,6 +45,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -199,7 +200,7 @@ private fun HeroCore(
     )
     val size: Dp by animateDpAsState(
         targetValue = if (live) 184.dp else 168.dp,
-        animationSpec = if (reduceMotion) tween(150) else spring(dampingRatio = 0.6f, stiffness = 320f),
+        animationSpec = if (reduceMotion) tween<Dp>(150) else spring<Dp>(dampingRatio = 0.6f, stiffness = 320f),
         label = "hero-size",
     )
     val corner = (50f - 26f * morph)
@@ -251,7 +252,7 @@ private fun RingCore(
 ) {
     val ringWidth by animateDpAsState(
         targetValue = if (live) 14.dp else 6.dp,
-        animationSpec = if (reduceMotion) tween(120) else MorphSpring,
+        animationSpec = if (reduceMotion) tween<Dp>(120) else spring<Dp>(dampingRatio = 0.7f, stiffness = Spring.StiffnessMedium),
         label = "ring-width",
     )
     Box(contentAlignment = Alignment.Center) {
@@ -294,7 +295,7 @@ private fun PillCore(
 ) {
     val width: Dp by animateDpAsState(
         targetValue = if (live) 220.dp else 196.dp,
-        animationSpec = if (reduceMotion) tween(120) else spring(dampingRatio = 0.6f, stiffness = 380f),
+        animationSpec = if (reduceMotion) tween<Dp>(120) else spring<Dp>(dampingRatio = 0.6f, stiffness = 380f),
         label = "pill-width",
     )
     Row(
@@ -397,7 +398,7 @@ private fun IconCore(
 ) {
     val corner by animateDpAsState(
         targetValue = if (live) 36.dp else 28.dp,
-        animationSpec = if (reduceMotion) tween(120) else MorphSpring,
+        animationSpec = if (reduceMotion) tween<Dp>(120) else spring<Dp>(dampingRatio = 0.7f, stiffness = Spring.StiffnessMedium),
         label = "icon-corner",
     )
     Box(
@@ -446,8 +447,8 @@ private fun SwitchCore(
     ) {
         val thumbOffset by animateDpAsState(
             targetValue = if (live) 62.dp else 0.dp,
-            animationSpec = if (reduceMotion) tween(120)
-            else spring(dampingRatio = 0.45f, stiffness = 500f),
+            animationSpec = if (reduceMotion) tween<Dp>(120)
+            else spring<Dp>(dampingRatio = 0.45f, stiffness = 500f),
             label = "switch-thumb",
         )
         Row(verticalAlignment = Alignment.CenterVertically) {
