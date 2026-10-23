@@ -5,20 +5,15 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -41,7 +36,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -54,7 +48,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -227,7 +220,7 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Settings", style = MaterialTheme.typography.titleLargeEmphasized) },
+                title = { Text("Settings") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -240,273 +233,213 @@ fun SettingsScreen(
             Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp)
-                .widthIn(max = 560.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .verticalScroll(rememberScrollState()),
         ) {
-            Spacer(Modifier.height(4.dp))
+            SectionLabel("Connection")
+            ListItem(
+                headlineContent = { Text("Verify exit location") },
+                supportingContent = { Text("Check that the tunnel exits in the selected country") },
+                trailingContent = {
+                    Switch(
+                        checked = exitCheckEnabled,
+                        onCheckedChange = {
+                            exitCheckEnabled = it
+                            settingsStore.exitCheckEnabled = it
+                        },
+                    )
+                },
+            )
 
-            SettingsSection(title = "Connection") {
-                SettingsSwitchRow(
-                    title = "Verify exit location",
-                    subtitle = "Check that the tunnel exits in the selected country",
-                    checked = exitCheckEnabled,
-                    onCheckedChange = {
-                        exitCheckEnabled = it
-                        settingsStore.exitCheckEnabled = it
-                    },
-                )
-            }
-
-            SettingsSection(title = "DNS") {
-                SettingsNavRow(
-                    title = "Tunnel DNS",
-                    subtitle = when (dnsProvider) {
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            SectionLabel("DNS")
+            ListItem(
+                headlineContent = { Text("Tunnel DNS") },
+                supportingContent = {
+                    val subtitle = when (dnsProvider) {
                         SettingsStore.DnsProvider.SYSTEM_DEFAULT -> "Default"
                         SettingsStore.DnsProvider.CUSTOM -> customDohUrl.ifBlank { "Custom DoH (Not configured)" }
                         else -> dnsProvider.label
-                    },
-                    onClick = { showDnsProviderDialog = true },
-                )
-                SettingsNavRow(
-                    title = "Resolver DNS",
-                    subtitle = when (bootstrapDnsProvider) {
+                    }
+                    Text(subtitle)
+                },
+                trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+                modifier = Modifier.clickable { showDnsProviderDialog = true },
+            )
+            ListItem(
+                headlineContent = { Text("Resolver DNS") },
+                supportingContent = {
+                    val subtitle = when (bootstrapDnsProvider) {
                         SettingsStore.BootstrapDnsProvider.CUSTOM -> customBootstrapIp.ifBlank { "Custom IP (Not configured)" }
                         SettingsStore.BootstrapDnsProvider.SYSTEM -> "System DNS"
                         else -> bootstrapDnsProvider.label
-                    },
-                    onClick = { showBootstrapDnsDialog = true },
-                )
-            }
-
-            SettingsSection(title = "Local proxy") {
-                SettingsSwitchRow(
-                    title = "Proxy-only mode",
-                    subtitle = "Run local proxy servers (SOCKS5 & HTTP), without a VPN interface",
-                    checked = proxyOnlyMode,
-                    onCheckedChange = {
-                        proxyOnlyMode = it
-                        settingsStore.proxyOnlyMode = it
-                    },
-                )
-                SettingsNavRow(
-                    title = "Local address",
-                    subtitle = socksBindAddress,
-                    onClick = { showSocksBindDialog = true },
-                )
-                SettingsNavRow(
-                    title = "SOCKS5 port",
-                    subtitle = socksPort.toString(),
-                    onClick = { showSocksPortDialog = true },
-                )
-                SettingsSwitchRow(
-                    title = "Enable HTTP proxy",
-                    subtitle = "Run local HTTP proxy alongside SOCKS5",
-                    checked = httpProxyEnabled,
-                    onCheckedChange = {
-                        httpProxyEnabled = it
-                        settingsStore.httpProxyEnabled = it
-                    },
-                )
-                if (httpProxyEnabled) {
-                    SettingsNavRow(
-                        title = "HTTP port",
-                        subtitle = httpProxyPort.toString(),
-                        onClick = { showHttpPortDialog = true },
-                    )
-                }
-            }
-
-            SettingsSection(title = "Split tunneling") {
-                SettingsNavRow(
-                    title = "Excluded apps",
-                    subtitle = if (excludedApps.isEmpty()) "None" else "${excludedApps.size} app(s) bypass the VPN",
-                    onClick = { showSplitTunnelDialog = true },
-                )
-            }
-
-            SettingsSection(title = "Advanced") {
-                SettingsNavRow(
-                    title = "Custom edge address",
-                    subtitle = customEdgeAddress.ifBlank { "Not set" },
-                    onClick = { showEdgeAddressDialog = true },
-                )
-                SettingsSwitchRow(
-                    title = "Chain through upstream proxy",
-                    subtitle = "Connect to the VPN server through another proxy first",
-                    checked = upstreamProxyEnabled,
-                    onCheckedChange = {
-                        upstreamProxyEnabled = it
-                        settingsStore.upstreamProxyEnabled = it
-                    },
-                )
-                if (upstreamProxyEnabled) {
-                    SettingsNavRow(
-                        title = "Proxy type",
-                        subtitle = upstreamProxyType.name,
-                        onClick = { showUpstreamProxyTypeDialog = true },
-                    )
-                    SettingsNavRow(
-                        title = "Proxy address",
-                        subtitle = if (upstreamProxyHost.isBlank()) "Not set" else "$upstreamProxyHost:$upstreamProxyPort",
-                        onClick = { showUpstreamProxyAddressDialog = true },
-                    )
-                    SettingsNavRow(
-                        title = "Proxy credentials",
-                        subtitle = if (upstreamProxyUsername.isBlank()) "None" else upstreamProxyUsername,
-                        onClick = { showUpstreamProxyCredentialsDialog = true },
-                    )
-                }
-            }
-
-            SettingsSection(title = "About") {
-                SettingsNavRow(
-                    title = "View logs",
-                    subtitle = "Recent connection activity",
-                    onClick = onOpenLogs,
-                )
-                SettingsStaticRow(title = "Version", subtitle = BuildConfig.VERSION_NAME)
-                SettingsStaticRow(title = "Created by", subtitle = "amirhossein asgari & muse")
-                SettingsNavRow(
-                    title = "Source code",
-                    subtitle = GITHUB_URL,
-                    leadingIcon = Icons.Filled.Code,
-                    onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(GITHUB_URL))) },
-                )
-            }
-
-            SettingsSection(title = "Account") {
-                SettingsNavRow(
-                    title = "Manage accounts",
-                    subtitle = "Multi-account list, quotas and batch import",
-                    leadingIcon = Icons.Filled.AccountCircle,
-                    onClick = onOpenAccount,
-                )
-                Button(
-                    onClick = onSignOut,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 4.dp),
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null)
-                    Text("  Sign out")
-                }
-            }
-
-            Spacer(Modifier.height(16.dp))
-        }
-    }
-}
-
-@Composable
-private fun SettingsSection(
-    title: String,
-    content: @Composable () -> Unit,
-) {
-    val cs = MaterialTheme.colorScheme
-    Column {
-        Text(
-            title,
-            style = MaterialTheme.typography.titleSmallEmphasized,
-            color = cs.primary,
-            modifier = Modifier.padding(start = 16.dp, bottom = 6.dp),
-        )
-        Surface(
-            shape = RoundedCornerShape(28.dp),
-            color = cs.surfaceContainerHigh,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Column(Modifier.padding(vertical = 4.dp)) {
-                content()
-            }
-        }
-    }
-}
-
-@Composable
-private fun SettingsSwitchRow(
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    }
+                    Text(subtitle)
+                },
+                trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+                modifier = Modifier.clickable { showBootstrapDnsDialog = true },
             )
-        }
-        Spacer(Modifier.width(12.dp))
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
-    }
-}
 
-@Composable
-private fun SettingsNavRow(
-    title: String,
-    subtitle: String,
-    onClick: () -> Unit,
-    leadingIcon: androidx.compose.ui.graphics.vector.ImageVector? = null,
-) {
-    val cs = MaterialTheme.colorScheme
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (leadingIcon != null) {
-            Icon(leadingIcon, contentDescription = null, tint = cs.onSurfaceVariant)
-            Spacer(Modifier.width(12.dp))
-        }
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = cs.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            SectionLabel("Local proxy")
+            ListItem(
+                headlineContent = { Text("Proxy-only mode") },
+                supportingContent = { Text("Run local proxy servers (SOCKS5 & HTTP), without a VPN interface") },
+                trailingContent = {
+                    Switch(
+                        checked = proxyOnlyMode,
+                        onCheckedChange = {
+                            proxyOnlyMode = it
+                            settingsStore.proxyOnlyMode = it
+                        },
+                    )
+                },
             )
-        }
-        Spacer(Modifier.width(12.dp))
-        Icon(
-            Icons.AutoMirrored.Filled.KeyboardArrowRight,
-            contentDescription = null,
-            tint = cs.onSurfaceVariant,
-        )
-    }
-}
+            ListItem(
+                headlineContent = { Text("Local address") },
+                supportingContent = { Text(socksBindAddress) },
+                trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+                modifier = Modifier.clickable { showSocksBindDialog = true },
+            )
+            ListItem(
+                headlineContent = { Text("SOCKS5 port") },
+                supportingContent = { Text(socksPort.toString()) },
+                trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+                modifier = Modifier.clickable { showSocksPortDialog = true },
+            )
+            ListItem(
+                headlineContent = { Text("Enable HTTP proxy") },
+                supportingContent = { Text("Run local HTTP proxy alongside SOCKS5") },
+                trailingContent = {
+                    Switch(
+                        checked = httpProxyEnabled,
+                        onCheckedChange = {
+                            httpProxyEnabled = it
+                            settingsStore.httpProxyEnabled = it
+                        },
+                    )
+                },
+            )
+            if (httpProxyEnabled) {
+                ListItem(
+                    headlineContent = { Text("HTTP port") },
+                    supportingContent = { Text(httpProxyPort.toString()) },
+                    trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+                    modifier = Modifier.clickable { showHttpPortDialog = true },
+                )
+            }
 
-@Composable
-private fun SettingsStaticRow(title: String, subtitle: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            SectionLabel("Split tunneling")
+            ListItem(
+                headlineContent = { Text("Excluded apps") },
+                supportingContent = {
+                    Text(
+                        if (excludedApps.isEmpty()) {
+                            "None"
+                        } else {
+                            "${excludedApps.size} app(s) bypass the VPN"
+                        },
+                    )
+                },
+                trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+                modifier = Modifier.clickable { showSplitTunnelDialog = true },
             )
+
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            SectionLabel("Advanced")
+            ListItem(
+                headlineContent = { Text("Custom edge address") },
+                supportingContent = { Text(customEdgeAddress.ifBlank { "Not set" }) },
+                trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+                modifier = Modifier.clickable { showEdgeAddressDialog = true },
+            )
+            ListItem(
+                headlineContent = { Text("Chain through upstream proxy") },
+                supportingContent = { Text("Connect to the VPN server through another proxy first") },
+                trailingContent = {
+                    Switch(
+                        checked = upstreamProxyEnabled,
+                        onCheckedChange = {
+                            upstreamProxyEnabled = it
+                            settingsStore.upstreamProxyEnabled = it
+                        },
+                    )
+                },
+            )
+            if (upstreamProxyEnabled) {
+                ListItem(
+                    headlineContent = { Text("Proxy type") },
+                    supportingContent = { Text(upstreamProxyType.name) },
+                    trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+                    modifier = Modifier.clickable { showUpstreamProxyTypeDialog = true },
+                )
+                ListItem(
+                    headlineContent = { Text("Proxy address") },
+                    supportingContent = {
+                        Text(
+                            if (upstreamProxyHost.isBlank()) {
+                                "Not set"
+                            } else {
+                                "$upstreamProxyHost:$upstreamProxyPort"
+                            },
+                        )
+                    },
+                    trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+                    modifier = Modifier.clickable { showUpstreamProxyAddressDialog = true },
+                )
+                ListItem(
+                    headlineContent = { Text("Proxy credentials") },
+                    supportingContent = {
+                        Text(if (upstreamProxyUsername.isBlank()) "None" else upstreamProxyUsername)
+                    },
+                    trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+                    modifier = Modifier.clickable { showUpstreamProxyCredentialsDialog = true },
+                )
+            }
+
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            SectionLabel("About")
+            ListItem(
+                headlineContent = { Text("View logs") },
+                supportingContent = { Text("Recent connection activity") },
+                trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+                modifier = Modifier.clickable(onClick = onOpenLogs),
+            )
+            ListItem(
+                headlineContent = { Text("Version") },
+                supportingContent = { Text(BuildConfig.VERSION_NAME) },
+            )
+            ListItem(
+                headlineContent = { Text("Source code") },
+                supportingContent = { Text(GITHUB_URL) },
+                leadingContent = { Icon(Icons.Filled.Code, contentDescription = null) },
+                modifier = Modifier.clickable {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(GITHUB_URL)))
+                },
+            )
+
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            SectionLabel("Account")
+            ListItem(
+                headlineContent = { Text("Manage account") },
+                supportingContent = { Text("Subscription status and data usage") },
+                leadingContent = { Icon(Icons.Filled.AccountCircle, contentDescription = null) },
+                trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+                modifier = Modifier.clickable(onClick = onOpenAccount),
+            )
+            Button(
+                onClick = onSignOut,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            ) {
+                Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null)
+                Text("  Sign out")
+            }
         }
     }
 }
