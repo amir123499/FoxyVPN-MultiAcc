@@ -101,7 +101,8 @@ fun HomeScreen(
 ) {
     val state by FoxyVpnService.state.collectAsState()
     val lastError by FoxyVpnService.lastError.collectAsState()
-    val multiStats by FoxyVpnService.multiAccountStats.collectAsState()
+    // NOTE (v1.3 lag fix): multiAccountStats emits every 2s while connected —
+    // it is collected locally inside SpeedRow/DetailsPanel, never here.
     val connectedCount by FoxyVpnService.connectedAccountCount.collectAsState()
     val accounts by app.tokenStore.accountsFlow.collectAsState()
     val selectedProxy by app.proxyStateStore.selectedProxyFlow.collectAsState()
@@ -121,19 +122,10 @@ fun HomeScreen(
         }
     }
 
-    var connectedSince by remember { mutableStateOf(0L) }
-    var elapsedSeconds by remember { mutableIntStateOf(0) }
-    LaunchedEffect(state) {
-        if (state == ConnectionState.CONNECTED) {
-            connectedSince = System.currentTimeMillis()
-            while (true) {
-                kotlinx.coroutines.delay(1_000L)
-                elapsedSeconds = ((System.currentTimeMillis() - connectedSince) / 1_000L).toInt()
-            }
-        } else {
-            elapsedSeconds = 0
-        }
-    }
+    // NOTE (v1.3 lag fix): the elapsed-seconds ticker used to live here and
+    // recomposed the ENTIRE home screen every second while connected. It now
+    // lives inside the connect core (rememberElapsedSeconds) so only the
+    // elapsed Text recomposes.
 
     fun navigate(dest: FoxyDestination) {
         when (dest) {
@@ -193,12 +185,10 @@ fun HomeScreen(
         val data = HomeContentData(
             state = state,
             lastError = lastError,
-            multiStats = multiStats,
             connectedCount = connectedCount,
             accounts = accounts,
             selectedProxy = selectedProxy,
             pingMs = pingMs,
-            elapsedSeconds = elapsedSeconds,
             detailsOpen = detailsOpen,
             appearance = appearance,
         )
@@ -228,12 +218,14 @@ fun HomeScreen(
 private data class HomeContentData(
     val state: ConnectionState,
     val lastError: String?,
-    val multiStats: List<AccountLiveStats>,
+    // NOTE (v1.3 lag fix): multiStats is NOT collected here anymore. The pool
+    // emits fresh stats every 2s while connected; collecting at HomeScreen
+    // level recomposed the whole tree on every tick. Consumers (SpeedRow,
+    // DetailsPanel) collect it locally so only they recompose.
     val connectedCount: Int,
     val accounts: List<VpnAccount>,
     val selectedProxy: ProxyCandidate?,
     val pingMs: Int,
-    val elapsedSeconds: Int,
     val detailsOpen: Boolean,
     val appearance: AppearanceController,
 )
@@ -263,9 +255,42 @@ private fun HomeConnectCore(data: HomeContentData, callbacks: HomeCallbacks) {
         reduceMotion = a.reduceMotion,
         connectColor = a.personalization.connectColor,
         connectedColor = a.personalization.connectedColor,
-        elapsedText = formatElapsed(data.elapsedSeconds),
         onToggle = callbacks.onToggle,
     )
+}
+
+/**
+ * Scoped 1-second elapsed ticker (v1.3 lag fix): only this Text recomposes
+ * each second while connected — never the parent screen.
+ */
+@Composable
+private fun ElapsedText(
+    state: ConnectionState,
+    style: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.bodyMedium,
+    color: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    modifier: Modifier = Modifier,
+    prefix: String = "",
+) {
+    var elapsed by remember { mutableIntStateOf(0) }
+    LaunchedEffect(state) {
+        if (state == ConnectionState.CONNECTED) {
+            val start = System.currentTimeMillis()
+            while (true) {
+                kotlinx.coroutines.delay(1_000L)
+                elapsed = ((System.currentTimeMillis() - start) / 1_000L).toInt()
+            }
+        } else {
+            elapsed = 0
+        }
+    }
+    if (state == ConnectionState.CONNECTED) {
+        Text(
+            text = "$prefix${formatElapsed(elapsed)}",
+            style = style,
+            color = color,
+            modifier = modifier,
+        )
+    }
 }
 
 @Composable
@@ -304,7 +329,6 @@ private fun PixelHomeBody(
         AnimatedVisibility(visible = data.detailsOpen && state == ConnectionState.CONNECTED) {
             DetailsPanel(
                 accounts = data.accounts,
-                stats = data.multiStats,
                 pingMs = data.pingMs,
                 personalization = data.appearance.personalization,
                 placeLabel = data.selectedProxy?.let {
@@ -344,7 +368,7 @@ private fun PixelHomeBody(
 
         Spacer(Modifier.height(vGap))
 
-        SpeedRow(stats = data.multiStats, live = state == ConnectionState.CONNECTED, corner = data.corner)
+        SpeedRow(live = state == ConnectionState.CONNECTED, corner = data.corner)
 
         Spacer(Modifier.height(16.dp))
     }
@@ -360,28 +384,27 @@ private fun HeroCard(
     val state = data.state
     val live = state == ConnectionState.CONNECTED
     val busy = state == ConnectionState.CONNECTING
-    val personalization = data.appearance.personalization
+    // 1:1 from ZedSecure PixelHeroCard: slowEffectsSpec colors, 44.dp card.
+    val effects = MaterialTheme.motionScheme.slowEffectsSpec<Color>()
     val container by animateColorAsState(
-        targetValue = when {
-            live -> personalization.connectedColor ?: cs.primaryContainer
-            else -> cs.surfaceContainer
-        },
-        animationSpec = tween(400),
-        label = "hero-container",
+        if (live) cs.primaryContainer else cs.surfaceContainer,
+        effects,
+        label = "pixel-card",
     )
     val ink by animateColorAsState(
-        targetValue = if (live) cs.onPrimaryContainer else cs.onSurface,
-        animationSpec = tween(400),
-        label = "hero-ink",
+        if (live) cs.onPrimaryContainer else cs.onSurface,
+        effects,
+        label = "pixel-ink",
     )
     val sub by animateColorAsState(
-        targetValue = if (live) cs.onPrimaryContainer.copy(alpha = 0.75f) else cs.onSurfaceVariant,
-        animationSpec = tween(400),
-        label = "hero-sub",
+        if (live) cs.onPrimaryContainer.copy(alpha = 0.78f) else cs.onSurfaceVariant,
+        effects,
+        label = "pixel-sub",
     )
+    val rise = MaterialTheme.motionScheme.defaultSpatialSpec<androidx.compose.ui.unit.IntOffset>()
 
     Surface(
-        shape = RoundedCornerShape(data.corner),
+        shape = RoundedCornerShape(44.dp),
         color = container,
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -393,10 +416,13 @@ private fun HeroCard(
         ) {
             HomeConnectCore(data = data, callbacks = callbacks)
             Spacer(Modifier.height(16.dp))
+            // 1:1: fadeIn(280) + slideInVertically(rise){it/3} togetherWith fadeOut(160).
             AnimatedContent(
                 targetState = state,
-                transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(150)) },
-                label = "hero-state",
+                transitionSpec = {
+                    (fadeIn(tween(280)) + slideInVertically(rise) { it / 3 }) togetherWith fadeOut(tween(160))
+                },
+                label = "pixel-state",
             ) { s ->
                 Text(
                     text = when (s) {
@@ -411,8 +437,9 @@ private fun HeroCard(
             }
             if (busy) {
                 Spacer(Modifier.height(10.dp))
+                // 1:1: LinearWavyProgressIndicator, 156.dp.
                 LinearWavyProgressIndicator(
-                    modifier = Modifier.width(150.dp),
+                    modifier = Modifier.width(156.dp),
                     color = cs.primary,
                     trackColor = cs.primary.copy(alpha = 0.18f),
                 )
@@ -422,6 +449,13 @@ private fun HeroCard(
                 Spacer(Modifier.height(4.dp))
                 Text(
                     "All traffic is protected",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = sub,
+                )
+            } else {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Tap the core to connect",
                     style = MaterialTheme.typography.bodySmall,
                     color = sub,
                 )
@@ -483,10 +517,9 @@ private fun PortalHomeBody(
             )
         }
         if (live) {
-            Text(
-                text = formatElapsed(data.elapsedSeconds),
+            ElapsedText(
+                state = state,
                 style = MaterialTheme.typography.titleMedium,
-                color = cs.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
@@ -564,7 +597,7 @@ private fun PortalHomeBody(
             onClick = callbacks.onOpenAccounts,
         )
         Spacer(Modifier.height(vGap))
-        SpeedRow(stats = data.multiStats, live = live, corner = data.corner)
+        SpeedRow(live = live, corner = data.corner)
         Spacer(Modifier.height(16.dp))
     }
 }
@@ -638,10 +671,10 @@ private fun OldHomeBody(
         HomeConnectCore(data = data, callbacks = callbacks)
         if (live) {
             Spacer(Modifier.height(10.dp))
-            Text(
-                text = "Connected for ${formatElapsed(data.elapsedSeconds)}",
+            ElapsedText(
+                state = state,
                 style = MaterialTheme.typography.bodyMedium,
-                color = cs.onSurfaceVariant,
+                prefix = "Connected for ",
             )
         }
         Spacer(Modifier.height(24.dp))
@@ -785,13 +818,14 @@ private fun FactChip(onClick: () -> Unit, content: @Composable () -> Unit) {
 @Composable
 private fun DetailsPanel(
     accounts: List<VpnAccount>,
-    stats: List<AccountLiveStats>,
     pingMs: Int,
     personalization: Personalization,
     placeLabel: String,
     onRefreshPing: () -> Unit,
 ) {
     val cs = MaterialTheme.colorScheme
+    // v1.3 lag fix: collected here so stats ticks recompose only this panel.
+    val stats by FoxyVpnService.multiAccountStats.collectAsState()
     val byId = remember(stats) { stats.associateBy { it.accountId } }
     Surface(
         shape = RoundedCornerShape(personalization.cornerStyle.cardDp.dp),
@@ -1004,8 +1038,14 @@ private fun AccountsRow(
 }
 
 @Composable
-private fun SpeedRow(stats: List<AccountLiveStats>, live: Boolean, corner: Dp) {
+/**
+ * v1.3 lag fix: collects pool stats locally so the 2-second stats tick
+ * recomposes ONLY this row, never the whole home screen.
+ */
+@Composable
+private fun SpeedRow(live: Boolean, corner: Dp) {
     val cs = MaterialTheme.colorScheme
+    val stats by FoxyVpnService.multiAccountStats.collectAsState()
     val down = stats.sumOf { it.speedDownBytesPerSec }
     val up = stats.sumOf { it.speedUpBytesPerSec }
     Row(
