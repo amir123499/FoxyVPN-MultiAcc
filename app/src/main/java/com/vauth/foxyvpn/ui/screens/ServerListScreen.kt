@@ -1,5 +1,7 @@
 package com.vauth.foxyvpn.ui.screens
 
+import com.vauth.foxyvpn.ui.l10n.s
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,7 +32,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import com.vauth.foxyvpn.ui.i18n.Text
+import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -125,7 +127,7 @@ fun ServerListScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Choose location") },
+                title = { Text(s("Choose location")) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -181,8 +183,8 @@ fun ServerListScreen(
                                 leadingContent = {
                                     Icon(Icons.Filled.Public, contentDescription = null)
                                 },
-                                headlineContent = { Text("Recommended", fontWeight = FontWeight.SemiBold) },
-                                supportingContent = { Text("Automatically chosen for the best performance") },
+                                headlineContent = { Text(s("Recommended"), fontWeight = FontWeight.SemiBold) },
+                                supportingContent = { Text(s("Automatically chosen for the best performance")) },
                                 trailingContent = {
                                     if (row.country.code == selected?.countryCode) {
                                         Icon(Icons.Filled.CheckCircle, contentDescription = "Selected")
@@ -355,7 +357,7 @@ private fun LocationGrid(
                             Icon(Icons.Filled.Public, contentDescription = null, tint = cs.onPrimaryContainer)
                             Spacer(Modifier.size(12.dp))
                             Column(Modifier.weight(1f)) {
-                                Text("Recommended", fontWeight = FontWeight.SemiBold, color = cs.onPrimaryContainer)
+                                Text(s("Recommended"), fontWeight = FontWeight.SemiBold, color = cs.onPrimaryContainer)
                                 Text(
                                     "Best performance",
                                     style = MaterialTheme.typography.bodySmall,
