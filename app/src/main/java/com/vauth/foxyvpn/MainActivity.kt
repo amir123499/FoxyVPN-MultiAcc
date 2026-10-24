@@ -14,12 +14,15 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.core.content.ContextCompat
 import androidx.navigation.compose.rememberNavController
+import com.vauth.foxyvpn.ui.i18n.LocalUiLang
+import com.vauth.foxyvpn.ui.i18n.UiLang
 import com.vauth.foxyvpn.ui.navigation.FoxyNavGraph
 import com.vauth.foxyvpn.ui.theme.AppLanguage
 import com.vauth.foxyvpn.ui.theme.FoxyVpnTheme
@@ -87,10 +90,18 @@ class MainActivity : ComponentActivity() {
                 if (fontScale == 1f) density else Density(density.density, density.fontScale * fontScale)
             }
             val systemDirection = LocalLayoutDirection.current
+            // The manifest sets supportsRtl=false, so the framework direction is always LTR;
+            // follow the device language ourselves for the "System" choice.
+            val deviceIsPersian = LocalConfiguration.current.locales[0]?.language == "fa"
             val layoutDirection = when (appearance.appLanguage) {
-                AppLanguage.System -> systemDirection
+                AppLanguage.System -> if (deviceIsPersian) LayoutDirection.Rtl else systemDirection
                 AppLanguage.English -> LayoutDirection.Ltr
                 AppLanguage.Persian -> LayoutDirection.Rtl
+            }
+            val uiLang = when (appearance.appLanguage) {
+                AppLanguage.System -> if (deviceIsPersian) UiLang.Fa else UiLang.En
+                AppLanguage.English -> UiLang.En
+                AppLanguage.Persian -> UiLang.Fa
             }
 
             FoxyVpnTheme(
@@ -99,10 +110,12 @@ class MainActivity : ComponentActivity() {
                 colorStyle = appearance.colorStyle,
                 accentColorIndex = appearance.accentColorIndex,
                 colorContrast = appearance.colorContrast,
+                reduceMotion = appearance.reduceMotion,
             ) {
                 CompositionLocalProvider(
                     LocalDensity provides scaledDensity,
                     LocalLayoutDirection provides layoutDirection,
+                    LocalUiLang provides uiLang,
                 ) {
                     Surface(modifier = Modifier.fillMaxSize()) {
                         val navController = rememberNavController()
