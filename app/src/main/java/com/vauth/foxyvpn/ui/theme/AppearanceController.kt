@@ -27,8 +27,6 @@ class AppearanceController(private val settingsStore: SettingsStore) {
         private set
     var reduceMotion: Boolean by mutableStateOf(settingsStore.reduceMotion)
         private set
-    var haptics: Boolean by mutableStateOf(settingsStore.hapticsEnabled)
-        private set
     var uiFontScale: UiFontScale by mutableStateOf(settingsStore.uiFontScale)
         private set
     var appLanguage: AppLanguage by mutableStateOf(settingsStore.appLanguage)
@@ -61,13 +59,15 @@ class AppearanceController(private val settingsStore: SettingsStore) {
         private set
     var doubleColumnDisplay: Boolean by mutableStateOf(settingsStore.doubleColumnDisplay)
         private set
+    var hapticFeedback: Boolean by mutableStateOf(settingsStore.hapticFeedback)
+        private set
 
     fun updateThemeMode(next: ThemeMode) {
         settingsStore.themeMode = next
         themeMode = next
     }
 
-    /** AMOLED switch: maps onto ThemeMode.AMOLED. */
+    /** AMOLED switch: maps onto ThemeMode.AMOLED like ZedSecure's amoledBlack. */
     fun updateAmoled(on: Boolean) {
         updateThemeMode(if (on) ThemeMode.AMOLED else ThemeMode.SYSTEM)
     }
@@ -99,9 +99,9 @@ class AppearanceController(private val settingsStore: SettingsStore) {
         reduceMotion = on
     }
 
-    fun updateHaptics(on: Boolean) {
-        settingsStore.hapticsEnabled = on
-        haptics = on
+    fun updateHapticFeedback(on: Boolean) {
+        settingsStore.hapticFeedback = on
+        hapticFeedback = on
     }
 
     fun updateUiFontScale(next: UiFontScale) {
