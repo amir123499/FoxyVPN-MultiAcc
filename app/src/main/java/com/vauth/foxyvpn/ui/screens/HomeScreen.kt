@@ -49,7 +49,7 @@ import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import com.vauth.foxyvpn.ui.i18n.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -144,7 +144,7 @@ fun HomeScreen(
                 actions = {
                     IconButton(
                         onClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            if (appearance.haptics) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             val next = when (appearance.themeMode) {
                                 ThemeMode.LIGHT -> ThemeMode.DARK
                                 ThemeMode.DARK -> ThemeMode.AMOLED
@@ -256,6 +256,7 @@ private fun HomeConnectCore(data: HomeContentData, callbacks: HomeCallbacks) {
         reduceMotion = a.reduceMotion,
         connectColor = a.personalization.connectColor,
         connectedColor = a.personalization.connectedColor,
+        haptics = a.haptics,
         onToggle = callbacks.onToggle,
     )
 }
