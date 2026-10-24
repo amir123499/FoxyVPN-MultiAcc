@@ -1,15 +1,10 @@
 package com.vauth.foxyvpn.ui.theme
 
 import android.app.Activity
-import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
 import android.os.Build
 import android.os.PowerManager
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.AnimationSpec
-import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ColorScheme
@@ -21,16 +16,12 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.graphics.Color
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
-import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import com.vauth.foxyvpn.ui.screens.LocalMotionBudget
 import com.vauth.foxyvpn.ui.screens.MotionBudget
@@ -159,7 +150,6 @@ fun FoxyVpnTheme(
     colorStyle: ColorStyle = ColorStyle.ZedSecure,
     accentColorIndex: Int = 0,
     colorContrast: ColorContrast = ColorContrast.Standard,
-    reduceMotion: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val systemInDarkTheme = isSystemInDarkTheme()
@@ -171,7 +161,7 @@ fun FoxyVpnTheme(
     }
     val context = LocalContext.current
     val useDynamic = dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-    val targetScheme = when {
+    val colorScheme = when {
         useDynamic -> {
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
@@ -185,10 +175,6 @@ fun FoxyVpnTheme(
             ).let { if (amoled) it.applyAmoled(darkTheme) else it }
         }
     }
-    // Cross-fade between schemes so changing theme, accent, contrast or AMOLED
-    // never snaps; with reduce motion the change is instant.
-    val colorScheme = animatedColorScheme(targetScheme, animate = !reduceMotion)
-    val motionBudget = rememberMotionBudget()
 
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -201,6 +187,12 @@ fun FoxyVpnTheme(
         }
     }
 
+    // Throttle idle animations when Android Battery Saver is on.
+    val motionBudget = rememberMotionBudget(context)
+
+    // Cross-fade theme/accent/contrast/AMOLED changes instead of snapping.
+    val animatedScheme = animateColorScheme(colorScheme)
+
     CompositionLocalProvider(
         LocalMotionBudget provides motionBudget,
         LocalFoxyStatusColors provides when {
@@ -210,7 +202,7 @@ fun FoxyVpnTheme(
         },
     ) {
         MaterialExpressiveTheme(
-            colorScheme = colorScheme,
+            colorScheme = animatedScheme,
             typography = FoxyTypography,
             motionScheme = MotionScheme.expressive(),
             content = content,
@@ -218,76 +210,96 @@ fun FoxyVpnTheme(
     }
 }
 
-/** Returns [target] with every base colour animated toward its new value. */
 @Composable
-private fun animatedColorScheme(target: ColorScheme, animate: Boolean): ColorScheme {
-    val spec: AnimationSpec<Color> = if (animate) tween<Color>(durationMillis = 420) else snap<Color>()
-
-    @Composable
-    fun anim(color: Color): Color = animateColorAsState(color, spec, label = "scheme").value
-
-    return target.copy(
-        primary = anim(target.primary),
-        onPrimary = anim(target.onPrimary),
-        primaryContainer = anim(target.primaryContainer),
-        onPrimaryContainer = anim(target.onPrimaryContainer),
-        inversePrimary = anim(target.inversePrimary),
-        secondary = anim(target.secondary),
-        onSecondary = anim(target.onSecondary),
-        secondaryContainer = anim(target.secondaryContainer),
-        onSecondaryContainer = anim(target.onSecondaryContainer),
-        tertiary = anim(target.tertiary),
-        onTertiary = anim(target.onTertiary),
-        tertiaryContainer = anim(target.tertiaryContainer),
-        onTertiaryContainer = anim(target.onTertiaryContainer),
-        background = anim(target.background),
-        onBackground = anim(target.onBackground),
-        surface = anim(target.surface),
-        onSurface = anim(target.onSurface),
-        surfaceVariant = anim(target.surfaceVariant),
-        onSurfaceVariant = anim(target.onSurfaceVariant),
-        surfaceTint = anim(target.surfaceTint),
-        inverseSurface = anim(target.inverseSurface),
-        inverseOnSurface = anim(target.inverseOnSurface),
-        error = anim(target.error),
-        onError = anim(target.onError),
-        errorContainer = anim(target.errorContainer),
-        onErrorContainer = anim(target.onErrorContainer),
-        outline = anim(target.outline),
-        outlineVariant = anim(target.outlineVariant),
-        scrim = anim(target.scrim),
-        surfaceBright = anim(target.surfaceBright),
-        surfaceDim = anim(target.surfaceDim),
-        surfaceContainer = anim(target.surfaceContainer),
-        surfaceContainerHigh = anim(target.surfaceContainerHigh),
-        surfaceContainerHighest = anim(target.surfaceContainerHighest),
-        surfaceContainerLow = anim(target.surfaceContainerLow),
-        surfaceContainerLowest = anim(target.surfaceContainerLowest),
-    )
+private fun rememberMotionBudget(context: Context): MotionBudget {
+    val pm = remember(context) {
+        context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+    }
+    // Re-read when the composable is entered; battery saver is sticky enough
+    // that a one-shot sample is acceptable (no continuous broadcast needed).
+    val saveOn = pm?.isPowerSaveMode == true
+    return if (saveOn) MotionBudget.Throttled else MotionBudget.Full
 }
 
 /**
- * Full motion normally; while Android's battery saver is on, looping
- * animations stop and only the ones that show progress keep running.
+ * Animates each ColorScheme role so theme/accent/contrast/AMOLED switches
+ * cross-fade rather than snap. Duration is short so it still feels responsive.
  */
 @Composable
-private fun rememberMotionBudget(): MotionBudget {
-    val context = LocalContext.current
-    val powerManager = remember(context) { context.getSystemService(Context.POWER_SERVICE) as? PowerManager }
-    var saverOn by remember { mutableStateOf(powerManager?.isPowerSaveMode == true) }
-    DisposableEffect(context) {
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: Intent?) {
-                saverOn = powerManager?.isPowerSaveMode == true
-            }
-        }
-        ContextCompat.registerReceiver(
-            context,
-            receiver,
-            IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED),
-            ContextCompat.RECEIVER_NOT_EXPORTED,
-        )
-        onDispose { context.unregisterReceiver(receiver) }
-    }
-    return if (saverOn) MotionBudget.Throttled else MotionBudget.Full
+private fun animateColorScheme(target: ColorScheme): ColorScheme {
+    val d = 280
+    val primary by animateColorAsState(target.primary, tween(d), label = "primary")
+    val onPrimary by animateColorAsState(target.onPrimary, tween(d), label = "onPrimary")
+    val primaryContainer by animateColorAsState(target.primaryContainer, tween(d), label = "primaryContainer")
+    val onPrimaryContainer by animateColorAsState(target.onPrimaryContainer, tween(d), label = "onPrimaryContainer")
+    val secondary by animateColorAsState(target.secondary, tween(d), label = "secondary")
+    val onSecondary by animateColorAsState(target.onSecondary, tween(d), label = "onSecondary")
+    val secondaryContainer by animateColorAsState(target.secondaryContainer, tween(d), label = "secondaryContainer")
+    val onSecondaryContainer by animateColorAsState(target.onSecondaryContainer, tween(d), label = "onSecondaryContainer")
+    val tertiary by animateColorAsState(target.tertiary, tween(d), label = "tertiary")
+    val onTertiary by animateColorAsState(target.onTertiary, tween(d), label = "onTertiary")
+    val tertiaryContainer by animateColorAsState(target.tertiaryContainer, tween(d), label = "tertiaryContainer")
+    val onTertiaryContainer by animateColorAsState(target.onTertiaryContainer, tween(d), label = "onTertiaryContainer")
+    val error by animateColorAsState(target.error, tween(d), label = "error")
+    val onError by animateColorAsState(target.onError, tween(d), label = "onError")
+    val errorContainer by animateColorAsState(target.errorContainer, tween(d), label = "errorContainer")
+    val onErrorContainer by animateColorAsState(target.onErrorContainer, tween(d), label = "onErrorContainer")
+    val background by animateColorAsState(target.background, tween(d), label = "background")
+    val onBackground by animateColorAsState(target.onBackground, tween(d), label = "onBackground")
+    val surface by animateColorAsState(target.surface, tween(d), label = "surface")
+    val onSurface by animateColorAsState(target.onSurface, tween(d), label = "onSurface")
+    val surfaceVariant by animateColorAsState(target.surfaceVariant, tween(d), label = "surfaceVariant")
+    val onSurfaceVariant by animateColorAsState(target.onSurfaceVariant, tween(d), label = "onSurfaceVariant")
+    val outline by animateColorAsState(target.outline, tween(d), label = "outline")
+    val outlineVariant by animateColorAsState(target.outlineVariant, tween(d), label = "outlineVariant")
+    val inverseSurface by animateColorAsState(target.inverseSurface, tween(d), label = "inverseSurface")
+    val inverseOnSurface by animateColorAsState(target.inverseOnSurface, tween(d), label = "inverseOnSurface")
+    val inversePrimary by animateColorAsState(target.inversePrimary, tween(d), label = "inversePrimary")
+    val surfaceTint by animateColorAsState(target.surfaceTint, tween(d), label = "surfaceTint")
+    val scrim by animateColorAsState(target.scrim, tween(d), label = "scrim")
+    val surfaceBright by animateColorAsState(target.surfaceBright, tween(d), label = "surfaceBright")
+    val surfaceDim by animateColorAsState(target.surfaceDim, tween(d), label = "surfaceDim")
+    val surfaceContainer by animateColorAsState(target.surfaceContainer, tween(d), label = "surfaceContainer")
+    val surfaceContainerHigh by animateColorAsState(target.surfaceContainerHigh, tween(d), label = "surfaceContainerHigh")
+    val surfaceContainerHighest by animateColorAsState(target.surfaceContainerHighest, tween(d), label = "surfaceContainerHighest")
+    val surfaceContainerLow by animateColorAsState(target.surfaceContainerLow, tween(d), label = "surfaceContainerLow")
+    val surfaceContainerLowest by animateColorAsState(target.surfaceContainerLowest, tween(d), label = "surfaceContainerLowest")
+    return target.copy(
+        primary = primary,
+        onPrimary = onPrimary,
+        primaryContainer = primaryContainer,
+        onPrimaryContainer = onPrimaryContainer,
+        secondary = secondary,
+        onSecondary = onSecondary,
+        secondaryContainer = secondaryContainer,
+        onSecondaryContainer = onSecondaryContainer,
+        tertiary = tertiary,
+        onTertiary = onTertiary,
+        tertiaryContainer = tertiaryContainer,
+        onTertiaryContainer = onTertiaryContainer,
+        error = error,
+        onError = onError,
+        errorContainer = errorContainer,
+        onErrorContainer = onErrorContainer,
+        background = background,
+        onBackground = onBackground,
+        surface = surface,
+        onSurface = onSurface,
+        surfaceVariant = surfaceVariant,
+        onSurfaceVariant = onSurfaceVariant,
+        outline = outline,
+        outlineVariant = outlineVariant,
+        inverseSurface = inverseSurface,
+        inverseOnSurface = inverseOnSurface,
+        inversePrimary = inversePrimary,
+        surfaceTint = surfaceTint,
+        scrim = scrim,
+        surfaceBright = surfaceBright,
+        surfaceDim = surfaceDim,
+        surfaceContainer = surfaceContainer,
+        surfaceContainerHigh = surfaceContainerHigh,
+        surfaceContainerHighest = surfaceContainerHighest,
+        surfaceContainerLow = surfaceContainerLow,
+        surfaceContainerLowest = surfaceContainerLowest,
+    )
 }
