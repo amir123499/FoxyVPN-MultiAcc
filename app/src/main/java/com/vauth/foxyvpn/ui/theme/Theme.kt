@@ -1,8 +1,18 @@
 package com.vauth.foxyvpn.ui.theme
 
 import android.app.Activity
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
+import android.os.PowerManager
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.darkColorScheme
@@ -11,9 +21,16 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import com.vauth.foxyvpn.ui.screens.LocalMotionBudget
 import com.vauth.foxyvpn.ui.screens.MotionBudget
@@ -142,6 +159,7 @@ fun FoxyVpnTheme(
     colorStyle: ColorStyle = ColorStyle.ZedSecure,
     accentColorIndex: Int = 0,
     colorContrast: ColorContrast = ColorContrast.Standard,
+    reduceMotion: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val systemInDarkTheme = isSystemInDarkTheme()
@@ -153,7 +171,7 @@ fun FoxyVpnTheme(
     }
     val context = LocalContext.current
     val useDynamic = dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-    val colorScheme = when {
+    val targetScheme = when {
         useDynamic -> {
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
@@ -167,6 +185,10 @@ fun FoxyVpnTheme(
             ).let { if (amoled) it.applyAmoled(darkTheme) else it }
         }
     }
+    // Cross-fade between schemes so changing theme, accent, contrast or AMOLED
+    // never snaps; with reduce motion the change is instant.
+    val colorScheme = animatedColorScheme(targetScheme, animate = !reduceMotion)
+    val motionBudget = rememberMotionBudget()
 
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -180,7 +202,7 @@ fun FoxyVpnTheme(
     }
 
     CompositionLocalProvider(
-        LocalMotionBudget provides MotionBudget.Full,
+        LocalMotionBudget provides motionBudget,
         LocalFoxyStatusColors provides when {
             amoled -> AmoledStatusColors
             darkTheme -> DarkStatusColors
@@ -194,4 +216,78 @@ fun FoxyVpnTheme(
             content = content,
         )
     }
+}
+
+/** Returns [target] with every base colour animated toward its new value. */
+@Composable
+private fun animatedColorScheme(target: ColorScheme, animate: Boolean): ColorScheme {
+    val spec: AnimationSpec<Color> = if (animate) tween<Color>(durationMillis = 420) else snap<Color>()
+
+    @Composable
+    fun anim(color: Color): Color = animateColorAsState(color, spec, label = "scheme").value
+
+    return target.copy(
+        primary = anim(target.primary),
+        onPrimary = anim(target.onPrimary),
+        primaryContainer = anim(target.primaryContainer),
+        onPrimaryContainer = anim(target.onPrimaryContainer),
+        inversePrimary = anim(target.inversePrimary),
+        secondary = anim(target.secondary),
+        onSecondary = anim(target.onSecondary),
+        secondaryContainer = anim(target.secondaryContainer),
+        onSecondaryContainer = anim(target.onSecondaryContainer),
+        tertiary = anim(target.tertiary),
+        onTertiary = anim(target.onTertiary),
+        tertiaryContainer = anim(target.tertiaryContainer),
+        onTertiaryContainer = anim(target.onTertiaryContainer),
+        background = anim(target.background),
+        onBackground = anim(target.onBackground),
+        surface = anim(target.surface),
+        onSurface = anim(target.onSurface),
+        surfaceVariant = anim(target.surfaceVariant),
+        onSurfaceVariant = anim(target.onSurfaceVariant),
+        surfaceTint = anim(target.surfaceTint),
+        inverseSurface = anim(target.inverseSurface),
+        inverseOnSurface = anim(target.inverseOnSurface),
+        error = anim(target.error),
+        onError = anim(target.onError),
+        errorContainer = anim(target.errorContainer),
+        onErrorContainer = anim(target.onErrorContainer),
+        outline = anim(target.outline),
+        outlineVariant = anim(target.outlineVariant),
+        scrim = anim(target.scrim),
+        surfaceBright = anim(target.surfaceBright),
+        surfaceDim = anim(target.surfaceDim),
+        surfaceContainer = anim(target.surfaceContainer),
+        surfaceContainerHigh = anim(target.surfaceContainerHigh),
+        surfaceContainerHighest = anim(target.surfaceContainerHighest),
+        surfaceContainerLow = anim(target.surfaceContainerLow),
+        surfaceContainerLowest = anim(target.surfaceContainerLowest),
+    )
+}
+
+/**
+ * Full motion normally; while Android's battery saver is on, looping
+ * animations stop and only the ones that show progress keep running.
+ */
+@Composable
+private fun rememberMotionBudget(): MotionBudget {
+    val context = LocalContext.current
+    val powerManager = remember(context) { context.getSystemService(Context.POWER_SERVICE) as? PowerManager }
+    var saverOn by remember { mutableStateOf(powerManager?.isPowerSaveMode == true) }
+    DisposableEffect(context) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                saverOn = powerManager?.isPowerSaveMode == true
+            }
+        }
+        ContextCompat.registerReceiver(
+            context,
+            receiver,
+            IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        onDispose { context.unregisterReceiver(receiver) }
+    }
+    return if (saverOn) MotionBudget.Throttled else MotionBudget.Full
 }
