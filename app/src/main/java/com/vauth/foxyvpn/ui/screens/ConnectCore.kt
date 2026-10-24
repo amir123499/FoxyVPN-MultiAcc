@@ -23,7 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
+import com.vauth.foxyvpn.ui.i18n.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
@@ -81,6 +81,7 @@ fun ConnectCore(
     reduceMotion: Boolean = false,
     connectColor: Color? = null,
     connectedColor: Color? = null,
+    haptics: Boolean = true,
     onToggle: () -> Unit,
 ) {
     val cs = MaterialTheme.colorScheme
@@ -94,7 +95,7 @@ fun ConnectCore(
     }
     val idleAccent = connectColor ?: cs.primary
     val liveAccent = connectedColor ?: cs.primary
-    val haptics = LocalHapticFeedback.current
+    val feedback = LocalHapticFeedback.current
     val label = stateLabel(state)
 
     var previous by remember { mutableStateOf(state) }
@@ -103,7 +104,7 @@ fun ConnectCore(
     val burst = remember { Animatable(1f) }
     LaunchedEffect(state) {
         if (live && previous == ConnectionState.CONNECTING) {
-            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            if (haptics) feedback.performHapticFeedback(HapticFeedbackType.LongPress)
             if (animate) {
                 burst.snapTo(0f)
                 burst.animateTo(1f, tween(durationMillis = 900, easing = LinearEasing))
@@ -135,7 +136,7 @@ fun ConnectCore(
             clock = { clock.floatValue },
             burst = { burst.value },
             onTap = {
-                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                if (haptics) feedback.performHapticFeedback(HapticFeedbackType.LongPress)
                 onToggle()
             },
         )
