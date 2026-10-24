@@ -76,6 +76,10 @@ class SettingsStore(context: Context) {
         get() = prefs.getBoolean(KEY_REDUCE_MOTION, false)
         set(value) { prefs.edit().putBoolean(KEY_REDUCE_MOTION, value).apply() }
 
+    var hapticsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_HAPTICS, true)
+        set(value) { prefs.edit().putBoolean(KEY_HAPTICS, value).apply() }
+
     var uiFontScale: UiFontScale
         get() = UiFontScale.entries.firstOrNull {
             it.name == prefs.getString(KEY_UI_FONT_SCALE, null)
@@ -372,6 +376,7 @@ class SettingsStore(context: Context) {
         const val DEFAULT_ACCENT_INDEX = 10
         private const val KEY_COLOR_CONTRAST = "color_contrast"
         private const val KEY_REDUCE_MOTION = "reduce_motion"
+        private const val KEY_HAPTICS = "haptics_enabled"
         private const val KEY_UI_FONT_SCALE = "ui_font_scale"
         private const val KEY_APP_LANGUAGE = "app_language"
         private const val KEY_SCREEN_TRANSITION = "screen_transition"
