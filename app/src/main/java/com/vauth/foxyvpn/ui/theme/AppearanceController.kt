@@ -27,6 +27,8 @@ class AppearanceController(private val settingsStore: SettingsStore) {
         private set
     var reduceMotion: Boolean by mutableStateOf(settingsStore.reduceMotion)
         private set
+    var haptics: Boolean by mutableStateOf(settingsStore.hapticsEnabled)
+        private set
     var uiFontScale: UiFontScale by mutableStateOf(settingsStore.uiFontScale)
         private set
     var appLanguage: AppLanguage by mutableStateOf(settingsStore.appLanguage)
@@ -95,6 +97,11 @@ class AppearanceController(private val settingsStore: SettingsStore) {
     fun updateReduceMotion(on: Boolean) {
         settingsStore.reduceMotion = on
         reduceMotion = on
+    }
+
+    fun updateHaptics(on: Boolean) {
+        settingsStore.hapticsEnabled = on
+        haptics = on
     }
 
     fun updateUiFontScale(next: UiFontScale) {
