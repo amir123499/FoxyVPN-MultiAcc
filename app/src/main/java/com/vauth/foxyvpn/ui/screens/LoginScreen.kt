@@ -1,5 +1,7 @@
 package com.vauth.foxyvpn.ui.screens
 
+import com.vauth.foxyvpn.ui.l10n.s
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,7 +20,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import com.vauth.foxyvpn.ui.i18n.Text
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -88,7 +90,7 @@ fun LoginScreen(
             .padding(24.dp),
         verticalArrangement = Arrangement.Center,
     ) {
-        Text("Sign in with Firefox", style = MaterialTheme.typography.headlineMedium)
+        Text(s("Sign in with Firefox"), style = MaterialTheme.typography.headlineMedium)
         Spacer(Modifier.padding(top = 8.dp))
         Text(
             "FoxyVPN runs on the free 50 GB of monthly VPN traffic Mozilla includes with a Firefox account. No subscription is required.",
@@ -103,7 +105,7 @@ fun LoginScreen(
                 onValueChange = {
                     email = it.replace(Regex("[\\p{Z}\\u200B-\\u200D\\uFEFF\\u00A0\\s]+"), "").lowercase()
                 },
-                label = { Text("Firefox account email") },
+                label = { Text(s("Firefox account email")) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Email,
@@ -121,7 +123,7 @@ fun LoginScreen(
                 onValueChange = {
                     password = it.replace(Regex("[\\u200B-\\u200D\\uFEFF]"), "")
                 },
-                label = { Text("Password") },
+                label = { Text(s("Password")) },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(
@@ -145,17 +147,17 @@ fun LoginScreen(
                 enabled = !isLoading && email.isNotBlank() && password.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                if (isLoading) CircularProgressIndicator(modifier = Modifier.padding(end = 8.dp)) else Text("Continue")
+                if (isLoading) CircularProgressIndicator(modifier = Modifier.padding(end = 8.dp)) else Text(s("Continue"))
             }
         } else {
-            Text("Enter the confirmation code sent to your email", style = MaterialTheme.typography.bodyMedium)
+            Text(s("Enter the confirmation code sent to your email"), style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.padding(top = 12.dp))
             OutlinedTextField(
                 value = code,
                 onValueChange = {
                     code = it.replace(Regex("[\\p{Z}\\u200B-\\u200D\\uFEFF\\u00A0\\s]+"), "")
                 },
-                label = { Text("Confirmation code") },
+                label = { Text(s("Confirmation code")) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.NumberPassword,
@@ -178,7 +180,7 @@ fun LoginScreen(
                 enabled = !isLoading && code.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                if (isLoading) CircularProgressIndicator(modifier = Modifier.padding(end = 8.dp)) else Text("Verify")
+                if (isLoading) CircularProgressIndicator(modifier = Modifier.padding(end = 8.dp)) else Text(s("Verify"))
             }
         }
 
@@ -219,7 +221,7 @@ private fun BatchImportSection(
             onClick = { expanded = true },
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text("Batch import accounts")
+            Text(s("Batch import accounts"))
         }
         return
     }
@@ -297,6 +299,6 @@ private fun BatchImportSection(
         modifier = Modifier.fillMaxWidth(),
     ) {
         if (importing) CircularProgressIndicator(modifier = Modifier.padding(end = 8.dp))
-        else Text("Import")
+        else Text(s("Import"))
     }
 }
