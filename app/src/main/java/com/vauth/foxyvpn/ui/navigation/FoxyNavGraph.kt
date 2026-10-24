@@ -1,11 +1,15 @@
 package com.vauth.foxyvpn.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.vauth.foxyvpn.FoxyVpnApp
+import com.vauth.foxyvpn.ui.motion.screenMotion
 import com.vauth.foxyvpn.ui.screens.AccountScreen
 import com.vauth.foxyvpn.ui.screens.HomeScreen
 import com.vauth.foxyvpn.ui.screens.LoginScreen
@@ -13,7 +17,6 @@ import com.vauth.foxyvpn.ui.screens.LogsScreen
 import com.vauth.foxyvpn.ui.screens.ServerListScreen
 import com.vauth.foxyvpn.ui.screens.SettingsScreen
 import com.vauth.foxyvpn.ui.screens.SplashScreen
-import com.vauth.foxyvpn.ui.screens.transitionTransform
 import com.vauth.foxyvpn.ui.theme.AppearanceController
 
 object FoxyRoutes {
@@ -34,15 +37,18 @@ fun FoxyNavGraph(
     onRequestConnect: () -> Unit,
     onDisconnect: () -> Unit,
 ) {
-    val transition = transitionTransform(appearance.screenTransition, appearance.reduceMotion)
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val motion = remember(appearance.screenTransition, appearance.reduceMotion, rtl) {
+        screenMotion(appearance.screenTransition, appearance.reduceMotion, rtl)
+    }
 
     NavHost(
         navController = navController,
         startDestination = FoxyRoutes.SPLASH,
-        enterTransition = { transition.targetContentEnter },
-        exitTransition = { transition.initialContentExit },
-        popEnterTransition = { transition.targetContentEnter },
-        popExitTransition = { transition.initialContentExit },
+        enterTransition = { motion.enter },
+        exitTransition = { motion.exit },
+        popEnterTransition = { motion.popEnter },
+        popExitTransition = { motion.popExit },
     ) {
         composable(FoxyRoutes.SPLASH) {
             SplashScreen(
