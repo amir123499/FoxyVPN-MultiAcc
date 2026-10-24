@@ -48,7 +48,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
+import com.vauth.foxyvpn.ui.i18n.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -80,6 +80,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
+    var confirmSignOut by remember { mutableStateOf(false) }
     var exitCheckEnabled by remember { mutableStateOf(settingsStore.exitCheckEnabled) }
     var dnsProvider by remember { mutableStateOf(settingsStore.dnsProvider) }
     var customDohUrl by remember { mutableStateOf(settingsStore.customDohUrl) }
@@ -407,7 +408,7 @@ fun SettingsScreen(
                     onClick = onOpenAccount,
                 )
                 Button(
-                    onClick = onSignOut,
+                    onClick = { confirmSignOut = true },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.errorContainer,
                         contentColor = MaterialTheme.colorScheme.onErrorContainer,
@@ -418,6 +419,26 @@ fun SettingsScreen(
                 ) {
                     Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null)
                     Text("  Sign out")
+                }
+                if (confirmSignOut) {
+                    AlertDialog(
+                        onDismissRequest = { confirmSignOut = false },
+                        title = { Text("Sign out?") },
+                        text = {
+                            Text("Signing out removes every saved account from this device. You will need to sign in again.")
+                        },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    confirmSignOut = false
+                                    onSignOut()
+                                },
+                            ) { Text("Sign out") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { confirmSignOut = false }) { Text("Cancel") }
+                        },
+                    )
                 }
             }
 
