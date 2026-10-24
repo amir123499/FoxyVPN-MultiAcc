@@ -13,7 +13,7 @@ import androidx.core.graphics.ColorUtils
  */
 
 enum class ColorStyle(val label: String) {
-    ZedSecure("ZedSecure"),
+    ZedSecure("Signature"),
     TonalSpot("Tonal Spot"),
     Vibrant("Vibrant"),
     Expressive("Expressive"),
