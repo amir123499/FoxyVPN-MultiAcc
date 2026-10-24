@@ -1,5 +1,7 @@
 package com.vauth.foxyvpn.ui.screens
 
+import com.vauth.foxyvpn.ui.l10n.s
+
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.Spring
@@ -43,8 +45,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
-import com.vauth.foxyvpn.ui.i18n.Text
-import com.vauth.foxyvpn.ui.motion.screenMotion
+import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -82,8 +83,7 @@ import com.vauth.foxyvpn.ui.theme.accentSeed
 import kotlinx.coroutines.delay
 
 /**
- * The Interface section. Its layout uses ZedSecure's settings page as a design
- * reference only.
+ * The full Interface section, ported from ZedSecure's Ui settings page.
  * Appearance only — the VPN core is untouched.
  */
 @Composable
@@ -91,7 +91,7 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
     val cs = MaterialTheme.colorScheme
     var showDialog by remember { mutableStateOf<DialogKind?>(null) }
 
-    SettingsSection(title = "Interface") {
+    SettingsSection(title = s("Interface")) {
         // --- Design -------------------------------------------------------
         Text(
             "Home screen design",
@@ -129,8 +129,8 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
             onSelect = { appearance.updateThemeMode(it) },
         )
         SettingsSwitchRow(
-            title = "Dynamic color",
-            subtitle = "Follow your wallpaper colors (Android 12+)",
+            title = s("Dynamic color"),
+            subtitle = s("Follow your wallpaper colors (Android 12+)"),
             checked = appearance.dynamicColor,
             onCheckedChange = { appearance.updateDynamicColor(it) },
         )
@@ -213,8 +213,8 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
             )
         }
         SettingsSwitchRow(
-            title = "AMOLED black",
-            subtitle = "Pure black background to save battery on OLED screens",
+            title = s("AMOLED black"),
+            subtitle = s("Pure black background to save battery on OLED screens"),
             checked = appearance.themeMode == ThemeMode.AMOLED,
             onCheckedChange = { appearance.updateAmoled(it) },
         )
@@ -259,7 +259,7 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
         // --- Display ------------------------------------------------------
         SectionSubhead("Display")
         SettingsNavRowSimple(
-            title = "Language",
+            title = s("Language"),
             subtitle = when (appearance.appLanguage) {
                 AppLanguage.System -> "System"
                 AppLanguage.English -> "English"
@@ -268,21 +268,21 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
             onClick = { showDialog = DialogKind.Language },
         )
         SettingsNavRowSimple(
-            title = "Font size",
+            title = s("Font size"),
             subtitle = appearance.uiFontScale.label,
             onClick = { showDialog = DialogKind.FontScale },
         )
         SettingsSwitchRow(
-            title = "Reduce motion",
-            subtitle = "Minimize animations across the app",
+            title = s("Reduce motion"),
+            subtitle = s("Minimize animations across the app"),
             checked = appearance.reduceMotion,
             onCheckedChange = { appearance.updateReduceMotion(it) },
         )
         SettingsSwitchRow(
-            title = "Haptic feedback",
-            subtitle = "Vibrate on connect and other key actions",
-            checked = appearance.haptics,
-            onCheckedChange = { appearance.updateHaptics(it) },
+            title = s("Haptic feedback"),
+            subtitle = s("Vibrate on connect control and theme changes"),
+            checked = appearance.hapticFeedback,
+            onCheckedChange = { appearance.updateHapticFeedback(it) },
         )
 
         HorizontalDividerThin()
@@ -329,7 +329,7 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
 
         // --- Navigation bar ------------------------------------------------
         SettingsNavRowSimple(
-            title = "Navigation bar style",
+            title = s("Navigation bar style"),
             subtitle = appearance.navBarStyle.label,
             onClick = { showDialog = DialogKind.NavBar },
         )
@@ -409,18 +409,18 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
             )
         }
         SettingsNavRowSimple(
-            title = "Card corners",
+            title = s("Card corners"),
             subtitle = appearance.cardCornerStyle.label,
             onClick = { showDialog = DialogKind.Corners },
         )
         SettingsNavRowSimple(
-            title = "List density",
+            title = s("List density"),
             subtitle = appearance.listDensity.label,
             onClick = { showDialog = DialogKind.Density },
         )
         SettingsSwitchRow(
             title = "Show ping on locations",
-            subtitle = "Measure latency next to each location",
+            subtitle = s("Measure latency next to each location"),
             checked = appearance.showServerPing,
             onCheckedChange = { appearance.updateShowServerPing(it) },
         )
@@ -431,7 +431,7 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
             onCheckedChange = { appearance.updateShowServerUsage(it) },
         )
         SettingsSwitchRow(
-            title = "Monospace addresses",
+            title = s("Monospace addresses"),
             subtitle = "Use a fixed-width font for server addresses",
             checked = appearance.monospaceAddress,
             onCheckedChange = { appearance.updateMonospaceAddress(it) },
@@ -441,7 +441,7 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
                 onClick = { appearance.resetPersonalization() },
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
             ) {
-                Text("Reset all personalization")
+                Text(s("Reset all personalization"))
             }
         }
 
@@ -450,13 +450,13 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
         // --- Behaviour ------------------------------------------------------
         SectionSubhead("Behaviour")
         SettingsSwitchRow(
-            title = "Confirm before removing",
-            subtitle = "Ask before deleting an account",
+            title = s("Confirm before removing"),
+            subtitle = s("Ask before deleting an account"),
             checked = appearance.confirmRemove,
             onCheckedChange = { appearance.updateConfirmRemove(it) },
         )
         SettingsSwitchRow(
-            title = "Back home after selecting",
+            title = s("Back home after selecting"),
             subtitle = "Return to the home screen after picking a location",
             checked = appearance.homeAfterSelect,
             onCheckedChange = { appearance.updateHomeAfterSelect(it) },
@@ -472,7 +472,7 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
     // --- Option dialogs ----------------------------------------------------
     when (showDialog) {
         DialogKind.Language -> OptionsDialog(
-            title = "Language",
+            title = s("Language"),
             options = AppLanguage.entries.map { it to it.label },
             selected = appearance.appLanguage,
             onDismiss = { showDialog = null },
@@ -482,7 +482,7 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
             },
         )
         DialogKind.FontScale -> OptionsDialog(
-            title = "Font size",
+            title = s("Font size"),
             options = UiFontScale.entries.map { it to it.label },
             selected = appearance.uiFontScale,
             onDismiss = { showDialog = null },
@@ -492,7 +492,7 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
             },
         )
         DialogKind.NavBar -> OptionsDialog(
-            title = "Navigation bar style",
+            title = s("Navigation bar style"),
             options = NavBarStyle.entries.map { it to it.label },
             selected = appearance.navBarStyle,
             onDismiss = { showDialog = null },
@@ -502,7 +502,7 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
             },
         )
         DialogKind.Corners -> OptionsDialog(
-            title = "Card corners",
+            title = s("Card corners"),
             options = CardCornerStyle.entries.map { it to it.label },
             selected = appearance.cardCornerStyle,
             onDismiss = { showDialog = null },
@@ -512,7 +512,7 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
             },
         )
         DialogKind.Density -> OptionsDialog(
-            title = "List density",
+            title = s("List density"),
             options = ListDensity.entries.map { it to it.label },
             selected = appearance.listDensity,
             onDismiss = { showDialog = null },
@@ -763,7 +763,15 @@ private fun TransitionPreview(style: ScreenTransition, reduceMotion: Boolean) {
             AnimatedContent(
                 targetState = step,
                 transitionSpec = {
-                    transitionTransform(style, reduceMotion).using(SizeTransform(clip = false))
+                    // Alternate forward/back so the preview shows both directions,
+                    // using the exact same transform the nav graph uses.
+                    val goingForward = targetState % 2 == 0
+                    transitionTransform(
+                        style = style,
+                        reduceMotion = reduceMotion,
+                        forward = goingForward,
+                        rtl = false, // preview is direction-agnostic; real nav passes rtl
+                    ).using(SizeTransform(clip = false))
                 },
                 label = "transition-preview",
                 modifier = Modifier.fillMaxSize(),
@@ -809,13 +817,57 @@ private fun ToyScreen(index: Int, modifier: Modifier = Modifier) {
     }
 }
 
-/** Forward-navigation transition for [style]; the preview in settings uses the same code as the nav graph. */
+/**
+ * Builds the ContentTransform for a transition style (shared by the nav graph
+ * and the settings preview so they stay in lock-step).
+ *
+ * [forward] = true for push / entering a destination; false for pop / back.
+ * Horizontal styles mirror when [rtl] is true so forward always moves "into"
+ * the reading direction.
+ */
 fun transitionTransform(
     style: ScreenTransition,
     reduceMotion: Boolean,
+    forward: Boolean = true,
+    rtl: Boolean = false,
 ): androidx.compose.animation.ContentTransform {
-    val motion = screenMotion(style, reduceMotion, rtl = false)
-    return motion.enter togetherWith motion.exit
+    if (reduceMotion) {
+        return fadeIn(tween(150)) togetherWith fadeOut(tween(150))
+    }
+    // Sign: +1 means "from the end of the reading direction" (right in LTR, left in RTL).
+    val dir = when {
+        forward && !rtl -> 1
+        forward && rtl -> -1
+        !forward && !rtl -> -1
+        else -> 1
+    }
+    return when (style) {
+        ScreenTransition.Fade -> fadeIn(tween(300)) togetherWith fadeOut(tween(300))
+        ScreenTransition.Slide -> slideInHorizontally(tween(320)) { dir * it / 3 } togetherWith
+            slideOutHorizontally(tween(320)) { -dir * it / 3 }
+        ScreenTransition.Push -> (fadeIn(tween(280)) + slideInHorizontally(tween(320)) { dir * it }) togetherWith
+            (fadeOut(tween(280)) + slideOutHorizontally(tween(320)) { -dir * it / 4 })
+        ScreenTransition.Depth -> {
+            if (forward) {
+                (fadeIn(tween(320)) + scaleIn(tween(320), initialScale = 1.08f)) togetherWith
+                    (fadeOut(tween(320)) + scaleOut(tween(320), targetScale = 0.92f))
+            } else {
+                (fadeIn(tween(320)) + scaleIn(tween(320), initialScale = 0.92f)) togetherWith
+                    (fadeOut(tween(320)) + scaleOut(tween(320), targetScale = 1.08f))
+            }
+        }
+        ScreenTransition.Elastic -> (fadeIn(tween(250)) + slideInHorizontally(
+            spring(dampingRatio = 0.65f, stiffness = Spring.StiffnessMediumLow),
+        ) { dir * it }) togetherWith fadeOut(tween(200))
+        ScreenTransition.Curtain -> {
+            val enterY = if (forward) -1 else 1
+            (fadeIn(tween(300)) +
+                androidx.compose.animation.slideInVertically(tween(380)) { enterY * it / 2 }) togetherWith
+                fadeOut(tween(280))
+        }
+        ScreenTransition.Flip -> (fadeIn(tween(200)) + scaleIn(tween(380), initialScale = 0.85f)) togetherWith
+            (fadeOut(tween(200)) + scaleOut(tween(380), targetScale = 0.85f))
+    }
 }
 
 @Composable
@@ -886,7 +938,7 @@ private fun <T> OptionsDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Close") }
+            TextButton(onClick = onDismiss) { Text(s("Close")) }
         },
     )
 }
@@ -963,10 +1015,10 @@ private fun PersonalizeColorDialog(
                     val parsed = parseHexColor(hex)
                     if (parsed != null) onConfirm(parsed) else error = true
                 },
-            ) { Text("Apply") }
+            ) { Text(s("Apply")) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(s("Cancel")) }
         },
     )
 }
