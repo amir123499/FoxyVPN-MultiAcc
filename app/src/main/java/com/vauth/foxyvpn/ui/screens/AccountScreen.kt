@@ -1,5 +1,7 @@
 package com.vauth.foxyvpn.ui.screens
 
+import com.vauth.foxyvpn.ui.l10n.s
+
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -42,7 +44,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
-import com.vauth.foxyvpn.ui.i18n.Text
+import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -134,7 +136,7 @@ fun AccountScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Accounts", style = MaterialTheme.typography.titleLargeEmphasized) },
+                title = { Text(s("Accounts"), style = MaterialTheme.typography.titleLargeEmphasized) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -184,7 +186,7 @@ fun AccountScreen(
                 ) {
                     Icon(Icons.Filled.ContentPaste, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Batch import")
+                    Text(s("Batch import"))
                 }
                 FilledTonalButton(
                     onClick = { showLoginDialog = true },
@@ -192,7 +194,7 @@ fun AccountScreen(
                 ) {
                     Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Add account")
+                    Text(s("Add account"))
                 }
             }
 
@@ -224,7 +226,7 @@ fun AccountScreen(
     pendingDelete?.let { account ->
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { pendingDelete = null },
-            title = { Text("Remove account?") },
+            title = { Text(s("Remove account?")) },
             text = { Text("Remove ${account.email.ifBlank { "this account" }} from the app?") },
             confirmButton = {
                 TextButton(
@@ -232,10 +234,10 @@ fun AccountScreen(
                         doDelete(account)
                         pendingDelete = null
                     },
-                ) { Text("Remove", color = MaterialTheme.colorScheme.error) }
+                ) { Text(s("Remove"), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) { Text("Cancel") }
+                TextButton(onClick = { pendingDelete = null }) { Text(s("Cancel")) }
             },
         )
     }
@@ -412,7 +414,7 @@ private fun BatchImportBottomSheet(
                 .padding(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text("Batch import", style = MaterialTheme.typography.titleLargeEmphasized)
+            Text(s("Batch import"), style = MaterialTheme.typography.titleLargeEmphasized)
             Text(
                 "Paste one entry per line (email:password) or a JSON array of " +
                     "{email, password} / {email, accessToken, refreshToken} objects.",
@@ -509,18 +511,18 @@ private fun SingleAccountLoginDialog(
                 Modifier.padding(24.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text("Add account", style = MaterialTheme.typography.titleLargeEmphasized)
+                Text(s("Add account"), style = MaterialTheme.typography.titleLargeEmphasized)
                 OutlinedTextField(
                     value = email,
                     onValueChange = { email = it },
-                    label = { Text("Email") },
+                    label = { Text(s("Email")) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
-                    label = { Text("Password") },
+                    label = { Text(s("Password")) },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth(),
@@ -532,7 +534,7 @@ private fun SingleAccountLoginDialog(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End,
                 ) {
-                    TextButton(onClick = onDismiss) { Text("Cancel") }
+                    TextButton(onClick = onDismiss) { Text(s("Cancel")) }
                     Spacer(Modifier.width(8.dp))
                     Button(
                         onClick = {
@@ -548,7 +550,7 @@ private fun SingleAccountLoginDialog(
                         enabled = !busy && email.isNotBlank() && password.isNotBlank(),
                     ) {
                         if (busy) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                        else Text("Sign in")
+                        else Text(s("Sign in"))
                     }
                 }
             }
