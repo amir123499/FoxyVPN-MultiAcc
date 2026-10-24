@@ -43,7 +43,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
+import com.vauth.foxyvpn.ui.i18n.Text
+import com.vauth.foxyvpn.ui.motion.screenMotion
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -276,6 +277,12 @@ fun InterfaceSettingsSection(appearance: AppearanceController) {
             subtitle = "Minimize animations across the app",
             checked = appearance.reduceMotion,
             onCheckedChange = { appearance.updateReduceMotion(it) },
+        )
+        SettingsSwitchRow(
+            title = "Haptic feedback",
+            subtitle = "Vibrate on connect and other key actions",
+            checked = appearance.haptics,
+            onCheckedChange = { appearance.updateHaptics(it) },
         )
 
         HorizontalDividerThin()
@@ -802,31 +809,13 @@ private fun ToyScreen(index: Int, modifier: Modifier = Modifier) {
     }
 }
 
-/** Builds the ContentTransform for a transition style (also used by the nav graph). */
+/** Forward-navigation transition for [style]; the preview in settings uses the same code as the nav graph. */
 fun transitionTransform(
     style: ScreenTransition,
     reduceMotion: Boolean,
 ): androidx.compose.animation.ContentTransform {
-    if (reduceMotion) {
-        return fadeIn(tween(150)) togetherWith fadeOut(tween(150))
-    }
-    return when (style) {
-        ScreenTransition.Fade -> fadeIn(tween(300)) togetherWith fadeOut(tween(300))
-        ScreenTransition.Slide -> slideInHorizontally(tween(320)) { it / 3 } togetherWith
-            slideOutHorizontally(tween(320)) { -it / 3 }
-        ScreenTransition.Push -> (fadeIn(tween(280)) + slideInHorizontally(tween(320)) { it }) togetherWith
-            (fadeOut(tween(280)) + slideOutHorizontally(tween(320)) { -it / 4 })
-        ScreenTransition.Depth -> (fadeIn(tween(320)) + scaleIn(tween(320), initialScale = 1.08f)) togetherWith
-            (fadeOut(tween(320)) + scaleOut(tween(320), targetScale = 0.92f))
-        ScreenTransition.Elastic -> (fadeIn(tween(250)) + slideInHorizontally(
-            spring(dampingRatio = 0.65f, stiffness = Spring.StiffnessMediumLow),
-        ) { it }) togetherWith fadeOut(tween(200))
-        ScreenTransition.Curtain -> (fadeIn(tween(300)) + slideInHorizontally(tween(0)) { 0 } +
-            androidx.compose.animation.slideInVertically(tween(380)) { -it / 2 }) togetherWith
-            fadeOut(tween(280))
-        ScreenTransition.Flip -> (fadeIn(tween(200)) + scaleIn(tween(380), initialScale = 0.85f)) togetherWith
-            (fadeOut(tween(200)) + scaleOut(tween(380), targetScale = 0.85f))
-    }
+    val motion = screenMotion(style, reduceMotion, rtl = false)
+    return motion.enter togetherWith motion.exit
 }
 
 @Composable
