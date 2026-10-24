@@ -8,11 +8,13 @@ import androidx.compose.ui.graphics.luminance
 import androidx.core.graphics.ColorUtils
 
 /**
- * Interface/appearance options for FoxyVPN. ZedSecure's settings page was
- * used only as a design reference; the code here is written from scratch.
+ * Interface/appearance options ported from ZedSecure's Ui settings page.
+ * Design language studied from ZedSecure; all code below is original.
  */
 
 enum class ColorStyle(val label: String) {
+    // Enum name "ZedSecure" is kept so existing saved preferences still load.
+    // Display label renamed to "Signature" per product request.
     ZedSecure("Signature"),
     TonalSpot("Tonal Spot"),
     Vibrant("Vibrant"),
@@ -86,6 +88,8 @@ enum class ListDensity(val label: String) {
 data class AccentPreset(val name: String, val light: Color, val dark: Color)
 
 val AccentPresets: List<AccentPreset> = listOf(
+    // Indices 0..9 stable so previously saved accentColorIndex values still map
+    // to the same colours. Signal blue is appended; fresh installs default to it.
     AccentPreset("Iris", Color(0xFF5646D6), Color(0xFFC7BFFF)),
     AccentPreset("Ocean", Color(0xFF1E63D0), Color(0xFFAAC7FF)),
     AccentPreset("Teal", Color(0xFF00897E), Color(0xFF52DDCF)),
@@ -96,12 +100,15 @@ val AccentPresets: List<AccentPreset> = listOf(
     AccentPreset("Cyan", Color(0xFF00838F), Color(0xFF4DD0E1)),
     AccentPreset("Grape", Color(0xFF8E24AA), Color(0xFFE9B3FF)),
     AccentPreset("Slate", Color(0xFF4A5B7A), Color(0xFFB6C6EA)),
-    // Index 10: the default for new installs (see SettingsStore.DEFAULT_ACCENT_INDEX).
     AccentPreset("Signal blue", Color(0xFF2C6BED), Color(0xFF9DB8FF)),
 )
 
+/** Index of Signal blue — default only when no accent has been saved yet. */
+val DEFAULT_ACCENT_INDEX: Int =
+    AccentPresets.indexOfFirst { it.name == "Signal blue" }.coerceAtLeast(0)
+
 fun accentSeed(index: Int, dark: Boolean): Color {
-    val preset = AccentPresets.getOrNull(index) ?: AccentPresets[0]
+    val preset = AccentPresets.getOrNull(index) ?: AccentPresets[DEFAULT_ACCENT_INDEX]
     return if (dark) preset.dark else preset.light
 }
 
@@ -126,7 +133,7 @@ private fun Color.readableOn(): Color = if (luminance() > 0.5f) Color(0xFF101418
 
 /**
  * Builds a full Material3 [ColorScheme] from a seed color, in the spirit of
- * Seed colour generator using only androidx.core HSL (no third-party colour library)
+ * ZedSecure's material-kolor based generator, using only androidx.core HSL
  * math (no extra dependency). Surfaces carry a subtle tint of the seed hue
  * so the app background feels alive but tasteful.
  */
@@ -321,7 +328,7 @@ fun seedColorScheme(
     return scheme
 }
 
-/** AMOLED variant: pure-black surfaces. */
+/** AMOLED variant: pure-black surfaces, like ZedSecure's amoled() extension. */
 fun ColorScheme.applyAmoled(dark: Boolean): ColorScheme {
     if (!dark) return this
     return copy(
