@@ -7,6 +7,7 @@ import com.vauth.foxyvpn.ui.theme.AppLanguage
 import com.vauth.foxyvpn.ui.theme.CardCornerStyle
 import com.vauth.foxyvpn.ui.theme.ColorContrast
 import com.vauth.foxyvpn.ui.theme.ColorStyle
+import com.vauth.foxyvpn.ui.theme.DEFAULT_ACCENT_INDEX
 import com.vauth.foxyvpn.ui.theme.ConnectButtonStyle
 import com.vauth.foxyvpn.ui.theme.ListDensity
 import com.vauth.foxyvpn.ui.theme.NavBarStyle
@@ -49,7 +50,8 @@ class SettingsStore(context: Context) {
         set(value) { prefs.edit().putString(KEY_APP_DESIGN, value.name).apply() }
 
     // ------------------------------------------------------------------
-    // Interface / appearance settings (see AppearanceSettings.kt).
+    // Interface / appearance settings (ported from ZedSecure's Ui page).
+    // Defaults match ZedSecure's defaults.
     // ------------------------------------------------------------------
 
     var colorStyle: ColorStyle
@@ -63,8 +65,16 @@ class SettingsStore(context: Context) {
         set(value) { prefs.edit().putBoolean(KEY_DYNAMIC_COLOR, value).apply() }
 
     var accentColorIndex: Int
-        get() = prefs.getInt(KEY_ACCENT_COLOR_INDEX, DEFAULT_ACCENT_INDEX)
+        get() = if (prefs.contains(KEY_ACCENT_COLOR_INDEX)) {
+            prefs.getInt(KEY_ACCENT_COLOR_INDEX, DEFAULT_ACCENT_INDEX)
+        } else {
+            DEFAULT_ACCENT_INDEX // Signal blue for fresh installs only
+        }
         set(value) { prefs.edit().putInt(KEY_ACCENT_COLOR_INDEX, value).apply() }
+
+    var hapticFeedback: Boolean
+        get() = prefs.getBoolean(KEY_HAPTIC_FEEDBACK, true) // default ON
+        set(value) { prefs.edit().putBoolean(KEY_HAPTIC_FEEDBACK, value).apply() }
 
     var colorContrast: ColorContrast
         get() = ColorContrast.entries.firstOrNull {
@@ -75,10 +85,6 @@ class SettingsStore(context: Context) {
     var reduceMotion: Boolean
         get() = prefs.getBoolean(KEY_REDUCE_MOTION, false)
         set(value) { prefs.edit().putBoolean(KEY_REDUCE_MOTION, value).apply() }
-
-    var hapticsEnabled: Boolean
-        get() = prefs.getBoolean(KEY_HAPTICS, true)
-        set(value) { prefs.edit().putBoolean(KEY_HAPTICS, value).apply() }
 
     var uiFontScale: UiFontScale
         get() = UiFontScale.entries.firstOrNull {
@@ -372,11 +378,9 @@ class SettingsStore(context: Context) {
         private const val KEY_COLOR_STYLE = "color_style"
         private const val KEY_DYNAMIC_COLOR = "dynamic_color"
         private const val KEY_ACCENT_COLOR_INDEX = "accent_color_index"
-        /** Signal blue (see AccentPresets). Existing stored choices are unaffected. */
-        const val DEFAULT_ACCENT_INDEX = 10
+        private const val KEY_HAPTIC_FEEDBACK = "haptic_feedback"
         private const val KEY_COLOR_CONTRAST = "color_contrast"
         private const val KEY_REDUCE_MOTION = "reduce_motion"
-        private const val KEY_HAPTICS = "haptics_enabled"
         private const val KEY_UI_FONT_SCALE = "ui_font_scale"
         private const val KEY_APP_LANGUAGE = "app_language"
         private const val KEY_SCREEN_TRANSITION = "screen_transition"
