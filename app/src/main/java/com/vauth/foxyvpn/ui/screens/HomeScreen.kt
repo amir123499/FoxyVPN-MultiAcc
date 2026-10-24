@@ -1,5 +1,7 @@
 package com.vauth.foxyvpn.ui.screens
 
+import com.vauth.foxyvpn.ui.l10n.s
+
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -49,7 +51,7 @@ import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import com.vauth.foxyvpn.ui.i18n.Text
+import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -144,7 +146,7 @@ fun HomeScreen(
                 actions = {
                     IconButton(
                         onClick = {
-                            if (appearance.haptics) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             val next = when (appearance.themeMode) {
                                 ThemeMode.LIGHT -> ThemeMode.DARK
                                 ThemeMode.DARK -> ThemeMode.AMOLED
@@ -254,9 +256,9 @@ private fun HomeConnectCore(data: HomeContentData, callbacks: HomeCallbacks) {
         state = data.state,
         style = a.connectButtonStyle,
         reduceMotion = a.reduceMotion,
+        hapticEnabled = a.hapticFeedback,
         connectColor = a.personalization.connectColor,
         connectedColor = a.personalization.connectedColor,
-        haptics = a.haptics,
         onToggle = callbacks.onToggle,
     )
 }
@@ -386,7 +388,7 @@ private fun HeroCard(
     val state = data.state
     val live = state == ConnectionState.CONNECTED
     val busy = state == ConnectionState.CONNECTING
-    // Card colours animate with Material 3 slow-effects motion; 44.dp corners.
+    // 1:1 from ZedSecure PixelHeroCard: slowEffectsSpec colors, 44.dp card.
     val effects = MaterialTheme.motionScheme.slowEffectsSpec<Color>()
     val container by animateColorAsState(
         if (live) cs.primaryContainer else cs.surfaceContainer,
@@ -418,7 +420,7 @@ private fun HeroCard(
         ) {
             HomeConnectCore(data = data, callbacks = callbacks)
             Spacer(Modifier.height(16.dp))
-            // Crossfade with a short upward slide when the content changes.
+            // 1:1: fadeIn(280) + slideInVertically(rise){it/3} togetherWith fadeOut(160).
             AnimatedContent(
                 targetState = state,
                 transitionSpec = {
@@ -439,14 +441,14 @@ private fun HeroCard(
             }
             if (busy) {
                 Spacer(Modifier.height(10.dp))
-                // Wavy linear progress indicator, 156.dp wide.
+                // 1:1: LinearWavyProgressIndicator, 156.dp.
                 LinearWavyProgressIndicator(
                     modifier = Modifier.width(156.dp),
                     color = cs.primary,
                     trackColor = cs.primary.copy(alpha = 0.18f),
                 )
                 Spacer(Modifier.height(6.dp))
-                Text("Tap the core to cancel", style = MaterialTheme.typography.bodySmall, color = sub)
+                Text(s("Tap the core to cancel"), style = MaterialTheme.typography.bodySmall, color = sub)
             } else if (live) {
                 Spacer(Modifier.height(4.dp))
                 Text(
@@ -697,7 +699,7 @@ private fun OldHomeBody(
         )
         HorizontalDivider(color = cs.outlineVariant.copy(alpha = 0.6f))
         ClassicRow(
-            title = "Accounts",
+            title = s("Accounts"),
             subtitle = "${data.connectedCount} of ${data.accounts.size} connected",
             monospace = false,
             onClick = callbacks.onOpenAccounts,
@@ -1014,7 +1016,7 @@ private fun AccountsRow(
             }
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text("Accounts", style = MaterialTheme.typography.titleMediumEmphasized)
+                Text(s("Accounts"), style = MaterialTheme.typography.titleMediumEmphasized)
                 Text(
                     if (accounts.isEmpty()) "Tap to add your first account"
                     else "${accounts.count { it.isEnabled }} enabled · $connectedCount connected",
